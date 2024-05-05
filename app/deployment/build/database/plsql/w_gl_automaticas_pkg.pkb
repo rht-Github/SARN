@@ -854,8 +854,9 @@ procedure upd_predicciones(pn_drawing_id		number) is
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_predicciones'; 
 	lv$prediccion_nombre		  varchar2(30);
 	cursor c_resultados(pn_drawing_id		number) is
+	with resultados_tbl as (
 	select comb1, comb2, comb3, comb4, comb5, comb6
-	     , nvl(cu1,'#') fr1, nvl(cu2,'#') fr2, nvl(cu3,'#') fr3, nvl(cu4,'#') fr4, nvl(cu5,'#') fr5, nvl(cu6,'#') fr6
+		 , nvl(cu1,'#') fr1, nvl(cu2,'#') fr2, nvl(cu3,'#') fr3, nvl(cu4,'#') fr4, nvl(cu5,'#') fr5, nvl(cu6,'#') fr6
 		 , nvl(clt1,'#') lt1, nvl(clt2,'#') lt2, nvl(clt3,'#') lt3, nvl(clt4,'#') lt4, nvl(clt5,'#') lt5, nvl(clt6,'#') lt6
 		 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
 		   case when mod(comb1,2) = 0 then 2 else 
@@ -875,8 +876,23 @@ procedure upd_predicciones(pn_drawing_id		number) is
 		 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
 		   case when mod(comb6,2) = 0 then 2 else 
 		   case when mod(comb6,2) > 0 then 1 end end end p6
+		 , decode(pxc1,null,0,1) pxc1, decode(pxc2,null,0,1) pxc2, decode(pxc3,null,0,1) pxc3, decode(pxc4,null,0,1) pxc4, decode(pxc5,null,0,1) pxc5, decode(pxc6,null,0,1) pxc6
+		 , decode(pre1,null,0,2) pre1, decode(pre2,null,0,2) pre2, decode(pre3,null,0,2) pre3, decode(pre4,null,0,2) pre4, decode(pre5,null,0,2) pre5, decode(pre6,null,0,2) pre6
 	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id = pn_drawing_id;	
+	 where gambling_id = pn_drawing_id
+	)
+	, output_tbl as (
+	select comb1, comb2, comb3, comb4, comb5, comb6, fr1, fr2, fr3, fr4, fr5, fr6, lt1, lt2, lt3, lt4, lt5, lt6, p1, p2, p3, p4, p5, p6
+		 , case when pxc1 = 0 and pre1 = 0 then 0 else case when pxc1 = 0 and pre1 > 0 then 3 else case when pxc1 > 0 and pre1 = 0 then 4 else case when pxc1 > 0 and pre1 > 0 then 5 else 9 end end end end pre1
+		 , case when pxc2 = 0 and pre2 = 0 then 0 else case when pxc2 = 0 and pre2 > 0 then 3 else case when pxc2 > 0 and pre2 = 0 then 4 else case when pxc2 > 0 and pre2 > 0 then 5 else 9 end end end end pre2
+		 , case when pxc3 = 0 and pre3 = 0 then 0 else case when pxc3 = 0 and pre3 > 0 then 3 else case when pxc3 > 0 and pre3 = 0 then 4 else case when pxc3 > 0 and pre3 > 0 then 5 else 9 end end end end pre3
+		 , case when pxc4 = 0 and pre4 = 0 then 0 else case when pxc4 = 0 and pre4 > 0 then 3 else case when pxc4 > 0 and pre4 = 0 then 4 else case when pxc4 > 0 and pre4 > 0 then 5 else 9 end end end end pre4
+		 , case when pxc5 = 0 and pre5 = 0 then 0 else case when pxc5 = 0 and pre5 > 0 then 3 else case when pxc5 > 0 and pre5 = 0 then 4 else case when pxc5 > 0 and pre5 > 0 then 5 else 9 end end end end pre5
+		 , case when pxc6 = 0 and pre6 = 0 then 0 else case when pxc6 = 0 and pre6 > 0 then 3 else case when pxc6 > 0 and pre6 = 0 then 4 else case when pxc6 > 0 and pre6 > 0 then 5 else 9 end end end end pre6
+	  from resultados_tbl   
+	)
+	select comb1, comb2, comb3, comb4, comb5, comb6, fr1, fr2, fr3, fr4, fr5, fr6, lt1, lt2, lt3, lt4, lt5, lt6, p1, p2, p3, p4, p5, p6, pre1, pre2, pre3, pre4, pre5, pre6
+	  from output_tbl;
 begin 
 --DBMS_OUTPUT.PUT_LINE('-------------------------------');
 --DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
@@ -911,6 +927,11 @@ begin
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Frecuencia';
 
+		/*estos son los valores validos para esta actualizacion
+		0: Primo
+		1: Impar
+		2: Par
+		*/
 		update olap_sys.predicciones
 		   set res1 = k.p1
 		     , res2 = k.p2
@@ -930,6 +951,25 @@ begin
 			 , res6 = k.comb6
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Numerica';			   
+
+		/*estos son los valores validos para esta actualizacion
+		cuando pxcN tiene valor se transforma en 1
+		cuando preN tiene valor se transforma en 2
+		pxcN	preN	posN
+		0		0		0
+		0		2		3
+		1		0		4
+		1		2		5
+		*/
+		update olap_sys.predicciones
+		   set res1 = k.pre1
+		     , res2 = k.pre2
+			 , res3 = k.pre3
+			 , res4 = k.pre4
+			 , res5 = k.pre5
+			 , res6 = k.pre6
+		 where prediccion_sorteo = pn_drawing_id
+		   and prediccion_tipo = 'Preferente';
 	end loop;
 
 exception
@@ -963,7 +1003,7 @@ DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
 		 , match6_cnt = case when pre6 = '#' then 0 else case when pre6 = res6 then 1 else 0 end end
 		 , updated_date = sysdate
 	 where prediccion_sorteo = pn_drawing_id
-	   and prediccion_tipo in ('Ley_del_Tercio','Frecuencia','Primo_Impar_Par');
+	   and prediccion_tipo in ('Ley_del_Tercio','Frecuencia','Primo_Impar_Par','Preferente');
 	   
 	update olap_sys.predicciones
 	   set match_cnt = olap_sys.w_common_pkg.contar_igualdades (pre1||','||pre2||','||pre3||','||pre4||','||pre5||','||pre6

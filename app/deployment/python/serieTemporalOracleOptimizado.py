@@ -25,6 +25,7 @@ ARREGLO_CONFIG = [[1,"Frecuencia","SELECT GAMBLING_DATE FECHA, CU1 P1, CU2 P2, C
 				 ,[2,"Ley_del_Tercio","SELECT GAMBLING_DATE FECHA, CLT1 P1, CLT2 P2, CLT3 P3, CLT4 P4, CLT5 P5, CLT6 P6, GAMBLING_ID ID",1]
 				 ,[3,"Numerica","SELECT GAMBLING_DATE FECHA, COMB1 P1, COMB2 P2, COMB3 P3, COMB4 P4, COMB5 P5, COMB6 P6, GAMBLING_ID ID",1]
 				 ,[4,"Primo_Impar_Par","SELECT FECHA, P1, P2, P3, P4, P5, P6, ID",2]
+                 ,[5,"Preferente","SELECT FECHA, P1, P2, P3, P4, P5, P6, ID",3]
 				  ]
 
 #valores que se setean para cada sorteo
@@ -94,12 +95,40 @@ def crear_dataframe (select_stmt, historico, id_base, query_num):
 				query_stmt = query_stmt + " WHERE GAMBLING_ID > (SELECT MAX(GAMBLING_ID) FROM OLAP_SYS.SL_GAMBLINGS) - " + str(historico)
 				query_stmt = query_stmt + " AND GAMBLING_ID < " + str(id_base)
 				query_stmt = query_stmt + " ORDER BY GAMBLING_ID"
-			else:
+			elif query_num == 2:
 				query_stmt = select_stmt
 				query_stmt = query_stmt + " FROM OLAP_SYS.RES_PRIMO_IMPAR_PAR_NUM_V "
-				query_stmt = query_stmt + "ORDER BY ID"
+				query_stmt = query_stmt + " ORDER BY ID"
+			elif query_num == 3:
+				query_stmt = "WITH RESULTADOS_TBL AS ( "
+				query_stmt = query_stmt + " SELECT GAMBLING_DATE FECHA "
+				query_stmt = query_stmt + " , DECODE(PXC1,NULL,0,1) PXC1, DECODE(PXC2,NULL,0,1) PXC2, DECODE(PXC3,NULL,0,1) PXC3 "
+				query_stmt = query_stmt + " , DECODE(PXC4,NULL,0,1) PXC4, DECODE(PXC5,NULL,0,1) PXC5, DECODE(PXC6,NULL,0,1) PXC6 "
+				query_stmt = query_stmt + " , DECODE(PRE1,NULL,0,2) PRE1, DECODE(PRE2,NULL,0,2) PRE2, DECODE(PRE3,NULL,0,2) PRE3 "
+				query_stmt = query_stmt + " , DECODE(PRE4,NULL,0,2) PRE4, DECODE(PRE5,NULL,0,2) PRE5, DECODE(PRE6,NULL,0,2) PRE6 "
+				query_stmt = query_stmt + " , GAMBLING_ID ID "
+				query_stmt = query_stmt + " FROM OLAP_SYS.PM_MR_RESULTADOS_V2 "
+				query_stmt = query_stmt + " WHERE GAMBLING_ID > 897) "
+				query_stmt = query_stmt + " , OUTPUT_TBL AS (SELECT FECHA "
+				query_stmt = query_stmt + " , CASE WHEN PXC1 = 0 AND PRE1 = 0 THEN 0 ELSE CASE WHEN PXC1 = 0 AND PRE1 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC1 > 0 AND PRE1 = 0 THEN 4 ELSE CASE WHEN PXC1 > 0 AND PRE1 > 0 THEN 5 ELSE 9 END END END END P1 "
+				query_stmt = query_stmt + " , CASE WHEN PXC2 = 0 AND PRE2 = 0 THEN 0 ELSE CASE WHEN PXC2 = 0 AND PRE2 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC2 > 0 AND PRE2 = 0 THEN 4 ELSE CASE WHEN PXC2 > 0 AND PRE2 > 0 THEN 5 ELSE 9 END END END END P2 "
+				query_stmt = query_stmt + " , CASE WHEN PXC3 = 0 AND PRE3 = 0 THEN 0 ELSE CASE WHEN PXC3 = 0 AND PRE3 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC3 > 0 AND PRE3 = 0 THEN 4 ELSE CASE WHEN PXC3 > 0 AND PRE3 > 0 THEN 5 ELSE 9 END END END END P3 "
+				query_stmt = query_stmt + " , CASE WHEN PXC4 = 0 AND PRE4 = 0 THEN 0 ELSE CASE WHEN PXC4 = 0 AND PRE4 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC4 > 0 AND PRE4 = 0 THEN 4 ELSE CASE WHEN PXC4 > 0 AND PRE4 > 0 THEN 5 ELSE 9 END END END END P4 "
+				query_stmt = query_stmt + " , CASE WHEN PXC5 = 0 AND PRE5 = 0 THEN 0 ELSE CASE WHEN PXC5 = 0 AND PRE5 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC5 > 0 AND PRE5 = 0 THEN 4 ELSE CASE WHEN PXC5 > 0 AND PRE5 > 0 THEN 5 ELSE 9 END END END END P5 "
+				query_stmt = query_stmt + " , CASE WHEN PXC6 = 0 AND PRE6 = 0 THEN 0 ELSE CASE WHEN PXC6 = 0 AND PRE6 > 0 THEN 3 "
+				query_stmt = query_stmt + " ELSE CASE WHEN PXC6 > 0 AND PRE6 = 0 THEN 4 ELSE CASE WHEN PXC6 > 0 AND PRE6 > 0 THEN 5 ELSE 9 END END END END P6 "
+				query_stmt = query_stmt + " , ID "
+				query_stmt = query_stmt + " FROM RESULTADOS_TBL) "
+				query_stmt = query_stmt + select_stmt
+				query_stmt = query_stmt + " FROM OUTPUT_TBL "
+				query_stmt = query_stmt + " ORDER BY ID"
 
-				#print(query_stmt)
+			#print(query_stmt)
 
 			cursor.execute(query_stmt)
 			# Convirtiendo el resultset en un DataFrame de Pandas
@@ -135,10 +164,15 @@ def crear_prediccion_RandomForestRegressor( posicion:int, fecha_sorteo, df, arre
 	#print("paso1")
 
 	# Dividir los datos en conjunto de entrenamiento y prueba
-	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
+	#X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2,
+														random_state=0)
 
 	# Entrenar un modelo de regresión (Random Forest en este caso)
-	model = RandomForestRegressor(n_estimators=200, max_depth= 10, random_state=42)
+	#model = RandomForestRegressor(n_estimators=200, max_depth= 10, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	model = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=0)
 	model.fit(X_train, y_train)
 
 	# Predecir el siguiente valor en base a la fecha del proximo sorteo
@@ -186,12 +220,15 @@ def crear_prediccion_RandomForestClassifier( posicion:int, fecha_sorteo, df, arr
 	#print("paso1")
 
 	# Dividir los datos en conjunto de entrenamiento y prueba
-	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
+	#X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2,
+														random_state=0)
 
 	# Entrenar un modelo de regresión (Random Forest en este caso)
 	#model = RandomForestClassifier(n_estimators=200, max_depth= 10, random_state=42)
 	#esta modificacion es en base al articulo customer churn prediction
-	model = RandomForestClassifier(n_estimators=100, random_state=0)
+	model = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=0)
 	model.fit(X_train, y_train)
 
 	# Predecir el siguiente valor en base a la fecha del proximo sorteo
@@ -238,11 +275,16 @@ def crear_prediccion_XGBRegressor( posicion:int, fecha_sorteo, df, arreglo_entra
 	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
 
 	# Separar los datos en conjunto de entrenamiento y prueba
+	#X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
+	#													test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=42)
+														test_size=0.2, random_state=0)
 
 	# Inicializar y entrenar el modelo con hiperparámetros optimizados
-	model = XGBRegressor(n_estimators=1000, learning_rate=0.1, max_depth=5, random_state=42)
+	#model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=0)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -294,11 +336,16 @@ def crear_prediccion_HistGradientBoostingRegressor( posicion:int, fecha_sorteo, 
 	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
 
 	# Separar los datos en conjunto de entrenamiento y prueba
+	#X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
+	#													test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=42)
+														test_size=0.2, random_state=0)
 
 	# Inicializar y entrenar el modelo con hiperparámetros optimizados
-	model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
+	#model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=0)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -350,11 +397,15 @@ def crear_prediccion_HistGradientBoostingClassifier( posicion:int, fecha_sorteo,
 	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
 
 	# Separar los datos en conjunto de entrenamiento y prueba
+	#X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
+	#													test_size=0.2, random_state=42)
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=42)
+														test_size=0.2, random_state=0)
 
 	# Inicializar y entrenar el modelo
-	model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
+	#model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=0)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -410,7 +461,8 @@ def crear_prediccion_MLPClassifier( posicion:int, fecha_sorteo, df, arreglo_entr
 	y_train = df[posicion_str][:-1]
 
 	# Inicializar y entrenar el modelo de red neuronal
-	model = MLPClassifier(hidden_layer_sizes=(100,), max_iter=1000)
+	#model = MLPClassifier(hidden_layer_sizes=(100,), max_iter=100)
+	model = MLPClassifier(hidden_layer_sizes=(15,), activation='relu', solver='adam', alpha=0.001, max_iter=100)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -464,7 +516,9 @@ def crear_prediccion_KNeighborsClassifier( posicion:int, fecha_sorteo, df, arreg
 	# Separar los datos de entrenamiento y prueba
 	X = df[['DiasDesdeInicio']].values
 	y = df[posicion_str].values
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+	#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
 	# Normalizar los datos
 	scaler = StandardScaler()
@@ -532,7 +586,9 @@ def crear_prediccion_GaussianNB( posicion:int, fecha_sorteo, df, arreglo_entrada
 	# Separar los datos de entrenamiento y prueba
 	X = df[['DiasDesdeInicio']].values
 	y = df[posicion_str].values
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+	#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+	# esta modificacion es en base al articulo customer churn prediction
+	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
 	# Normalizar los datos
 	scaler = StandardScaler()
@@ -780,7 +836,7 @@ def ejecutar_tarea (select_stmt, mensaje, historico, id_base, guarda_prediccion,
 	print("Fecha Minima: ", dataframe['fecha'][0])
 	print("Fecha Maxima: ",dataframe['fecha'][dataframe['fecha'].count()-1])
 
-	if mensaje in ("Numerica", "Primo_Impar_Par"):
+	if mensaje not in ("Ley_del_Tercio","Frecuencia"):
 		print(prediccion_gl)
 
 	if mensaje in ("Ley_del_Tercio","Frecuencia"):
