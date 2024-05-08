@@ -157,11 +157,27 @@ procedure ins_gl_automaticas_detail(pv_gambling_type		varchar2 default 'mrtr'
 	             , pn_ia5		number
 	             , pn_ia6		number) is
 	select seq_id
+		 , comb1
+		 , comb2
+		 , comb3
+		 , comb4
+		 , comb5
+		 , comb6
 		 , pn_cnt
 		 , none_cnt
 		 , par_cnt
 		 , t2_cnt
 		 , comb_sum
+		 , d1
+		 , d2
+		 , d3
+		 , d4
+		 , d5
+		 , d6
+		 , d01_09
+		 , d10_19
+		 , d20_29
+		 , d30_39	
 	  from olap_sys.w_combination_responses_fs 
 	 where comb1 = pn_ia1 
 	   and comb2 = pn_ia2 
@@ -193,23 +209,43 @@ begin
 												 , par_cnt
 												 , t2_cnt
 												 , comb_sum
+												 , d1
+												 , d2
+												 , d3
+												 , d4
+												 , d5
+												 , d6
+												 , d01_09
+												 , d10_19
+												 , d20_29
+												 , d30_39
 												  )
 		values(pv_gambling_type
 			 , pn_list_id
 			 , pn_id
-			 , pn_ia1
-			 , pn_ia2
-			 , pn_ia3
-			 , pn_ia4
-			 , pn_ia5
-			 , pn_ia6
+			 , c.comb1
+			 , c.comb2
+			 , c.comb3
+			 , c.comb4
+			 , c.comb5
+			 , c.comb6
 			 , 'N'
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)
-			 , (select seq_id from olap_sys.w_combination_responses_fs where comb1 = pn_ia1 and comb2 = pn_ia2 and comb3 = pn_ia3 and comb4 = pn_ia4 and comb5 = pn_ia5 and comb6 = pn_ia6)		 
+			 , c.seq_id 
+			 , c.pn_cnt
+			 , c.none_cnt
+			 , c.par_cnt
+			 , c.t2_cnt
+			 , c.comb_sum 
+			 , c.d1
+			 , c.d2
+			 , c.d3
+			 , c.d4
+			 , c.d5
+			 , c.d6
+			 , c.d01_09
+			 , c.d10_19
+			 , c.d20_29
+			 , c.d30_39
 			  );
 	end loop;	  
 	commit;
@@ -876,7 +912,7 @@ procedure upd_predicciones(pn_drawing_id		number) is
 		 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
 		   case when mod(comb6,2) = 0 then 2 else 
 		   case when mod(comb6,2) > 0 then 1 end end end p6
-		 , decode(pxc1,null,0,1) pxc1, decode(pxc2,null,0,1) pxc2, decode(pxc3,null,0,1) pxc3, decode(pxc4,null,0,1) pxc4, decode(pxc5,null,0,1) pxc5, decode(pxc6,null,0,1) pxc6
+		 , decode(pxc1,null,0,1) pxc1, decode(pxc2,null,0,1) pxc2, decode(pxc3,null,0,1) pxc3, decode(pxc4,null,0,1) pxc4,    decode(pxc5,null,0,1) pxc5, decode(pxc6,null,0,1) pxc6
 		 , decode(pre1,null,0,2) pre1, decode(pre2,null,0,2) pre2, decode(pre3,null,0,2) pre3, decode(pre4,null,0,2) pre4, decode(pre5,null,0,2) pre5, decode(pre6,null,0,2) pre6
 	  from olap_sys.pm_mr_resultados_v2
 	 where gambling_id = pn_drawing_id
@@ -1236,7 +1272,8 @@ exception
 end porcentaje_c1_c3_c4_c6_handler;	
 
 
---!aplicar filtros y marcar status = Y para las jugadas que cumplan
+--!aplicar filtros para seleccionar la franja con jugadas mas ganadoras en base a calculos hechos en Excel
+--!y marcar status = Y para las jugadas que cumplan
 procedure filtrar_jugadas_decenas is
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'filtrar_jugadas_decenas'; 
 	ln$upd_cnt					  NUMBER := 0;
@@ -1267,8 +1304,7 @@ procedure filtrar_jugadas_decenas is
 									  , ('1-9','10-19','10-19','30-39','30-39','30-39')
 									  , ('1-9','1-9','10-19','30-39','30-39','30-39')
 									  , ('1-9','1-9','20-29','20-29','20-29','30-39')
-									  , ('1-9','1-9','1-9','20-29','30-39','30-39')
-	 ) 
+									  , ('1-9','1-9','1-9','20-29','30-39','30-39')) 
 	 group by comb_sum
 	)
 	, resultados_tbl as (
@@ -1437,9 +1473,9 @@ begin
 						  , pv_d6      	=> m.D6 
 						  , pn_comb_sum => m.COMB_SUM) loop
 		
-			--!filtrando las jugadas que se usaran para los sorteos
+			--!status temporal
 			update olap_sys.w_combination_responses_fs
-			   set status = 'Y'	
+			   set status = 'T'	
 			 where seq_id = d.seq_id; 
 			
 			ln$upd_cnt := ln$upd_cnt + 1;
@@ -1449,6 +1485,18 @@ begin
 		dbms_output.put_line(m.D1||' - '||m.D2||' - '||m.D3||' - '||m.D4||' - '||m.D5||' - '||m.D6||' - '||m.COMB_SUM||' - '||ln$upd_cnt||' rows updated.');
 		commit;		
 	end loop;
+	
+	--!el siguiente patron de decenas pertenecen los resultados de 5 o 6 aciertos hechas por gigaloterias
+	update olap_sys.w_combination_responses_fs
+	   set status = 'Y'	
+	 where status = 'T'	 
+	   and D1 = '1-9'
+       and D2 IN ('1-9','10-19')
+       and D3 IN ('10-19','20-29')
+       and D4 = '20-29'
+       and D5 = '30-39'
+       and D6 = '30-39';
+	   
 	commit;
 	dbms_output.put_line(ln$upd_cnt_total||' total rows updated.');
 	dbms_output.put_line(ln$loop_cnt||' loops.');
@@ -1461,11 +1509,50 @@ exception
     raise; 
 end filtrar_jugadas_decenas;		
 
+--!Ingesta de jugadas en tabla gl_automaticas_detail en base a jugadas en tabla w_combination_responses_fs
+procedure ins_gl_automaticas is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'ins_gl_automaticas'; 
+	ln$oop_cnt      number := 1;
+    
+    cursor c_main is
+    select comb1
+         , comb2
+         , comb3
+         , comb4
+         , comb5
+         , comb6
+         , 2 list_id
+     from olap_sys.w_combination_responses_fs
+    where status = 'Y'
+    order by comb1
+         , comb2
+         , comb3
+         , comb4
+         , comb5
+         , comb6;
+begin
+    for k in c_main loop
+        OLAP_SYS.W_GL_AUTOMATICAS_PKG.INS_GL_AUTOMATICAS_HANDLER(pn_id => ln$oop_cnt
+                                                               , pn_ia1 => k.comb1
+                                                               , pn_ia2 => k.comb2
+                                                               , pn_ia3 => k.comb3
+                                                               , pn_ia4 => k.comb4
+                                                               , pn_ia5 => k.comb5
+                                                               , pn_ia6 => k.comb6
+                                                               , pn_list_id => k.list_id);
+        ln$oop_cnt := ln$oop_cnt + 1;
+    end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_gl_automaticas;
 
 --!inicializar el status = N en la tabla w_combination_responses_fs
---!aplicar filtros y marcar status = Y para las jugadas que cumplan
-procedure filtrar_jugadas_handler is
-		    LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'filtrar_jugadas_handler'; 
+--!aplicar filtros para seleccionar la franja con jugadas mas ganadoras en base a calculos hechos en Excel
+--!y marcar status = Y para las jugadas que cumplan
+procedure filtrar_jugadas_handler (pv_insert_flag   varchar2 default 'Y') is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'filtrar_jugadas_handler'; 
 begin
 	--!deshabilitando el trigger de la tabla
 	EXECUTE IMMEDIATE 'ALTER TRIGGER OLAP_SYS.AIU_W_COMBINATION_RESPONSES_FS DISABLE';
@@ -1477,6 +1564,11 @@ begin
 	
 	--!aplicar filtros y marcar status = Y para las jugadas que cumplan
 	filtrar_jugadas_decenas;
+	
+	if pv_insert_flag = 'Y' then
+		--!Ingesta de jugadas en tabla gl_automaticas_detail en base a jugadas en tabla w_combination_responses_fs
+		ins_gl_automaticas;
+	end if;
 	
 	--!habilitando el trigger de la tabla
 	EXECUTE IMMEDIATE 'ALTER TRIGGER OLAP_SYS.AIU_W_COMBINATION_RESPONSES_FS ENABLE';

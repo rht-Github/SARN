@@ -71,8 +71,9 @@ procedure porcentaje_c1_c3_c4_c6_handler(pb_insert_flag			boolean default true
 									   , pn_jpctaccum			number  default 80); 
 
 --!inicializar el status = N en la tabla w_combination_responses_fs
---!aplicar filtros y marcar status = Y para las jugadas que cumplan
-procedure filtrar_jugadas_handler;
+--!aplicar filtros para seleccionar la franja con jugadas mas ganadoras en base a calculos hechos en Excel
+--!y marcar status = Y para las jugadas que cumplan
+procedure filtrar_jugadas_handler(pv_insert_flag   varchar2 default 'Y');
 									   
 end w_gl_automaticas_pkg;
 /
