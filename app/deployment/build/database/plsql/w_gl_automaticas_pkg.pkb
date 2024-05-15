@@ -466,42 +466,43 @@ begin
 	update OLAP_SYS.GL_AUTOMATICAS_DETAIL AD
 	   set FR1 = -1
 		 , LT1 = -1
-		 , CA1 = -1
-		 , PXC1 = -1
-		 , PF1 = '.'
+		 , CA1 = 0
+		 , PXC1 = 0
+		 , PF1 = 0
 		 , CHG1 = '.'
 		 , FR2 = -1
 		 , LT2 = -1
-		 , CA2 = -1
-		 , PXC2 = -1
-		 , PF2 = '.'
+		 , CA2 = 0
+		 , PXC2 = 0
+		 , PF2 = 0
 		 , CHG2 = '.'
 		 , FR3 = -1
 		 , LT3 = -1
-		 , CA3 = -1
-		 , PXC3 = -1
-		 , PF3 = '.'
+		 , CA3 = 0
+		 , PXC3 = 0
+		 , PF3 = 0
 		 , CHG3 = '.'
 	     , FR4 = -1
 		 , LT4 = -1
-		 , CA4 = -1
-		 , PXC4 = -1
-		 , PF4 = '.'
+		 , CA4 = 0
+		 , PXC4 = 0
+		 , PF4 = 0
 		 , CHG4 = '.'
 	     , FR5 = -1
 		 , LT5 = -1
-		 , CA5 = -1
-		 , PXC5 = -1
-		 , PF5 = '.'
+		 , CA5 = 0
+		 , PXC5 = 0
+		 , PF5 = 0
 		 , CHG5 = '.'
 		 , FR6 = -1
 		 , LT6 = -1
-		 , CA6 = -1
-		 , PXC6 = -1
-		 , PF6 = '.'
+		 , CA6 = 0
+		 , PXC6 = 0
+		 , PF6 = 0
 		 , CHG6 = '.'
 		 , SORTEO_ACTUAL = null
 		 , ACIERTOS_CNT = 0
+		 , REPETIDOS_CNT = 0
 		 , INCIDENCIA = 0
 		 , INCIDENCIA_CNT = 0
 		 , JUGAR_FLAG = 'N'
@@ -624,6 +625,16 @@ begin
 		end if;	
 	end loop;
 
+    --!actualizar el ca_sum
+    update OLAP_SYS.GL_AUTOMATICAS_DETAIL AD
+	   set CA_SUM = CA1 + CA2 + CA3 + CA4 + CA5 + CA6
+     where LIST_ID = pn_list_id
+	   and exists (select 1
+					 from olap_sys.gl_automaticas_header ah
+					where ah.list_id = ad.list_id
+					  and ah.sorteo_final is null
+					  and ah.list_id = pn_list_id);	
+						  
 	--!actualizacion de las jugadas mas ganadoras 
 	for t in c_jugadas_mas_ganadoras (pn_list_id => pn_list_id) loop
 		update OLAP_SYS.GL_AUTOMATICAS_DETAIL

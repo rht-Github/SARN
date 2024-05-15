@@ -9,8 +9,8 @@ select drawing_id id
 	 , color_ubicacion fre
 	 , color_ley_tercio lt
 	 , ciclo_aparicion ca
-	 , nvl(pronos_ciclo,-1) pxc
-	 , nvl(preferencia_flag,'.') pref
+     , decode(pronos_ciclo,null,0,1) pxc
+     , decode(preferencia_flag,null,0,2) pref
 	 , decode(CHNG_POSICION,null,'.','C') chg 
 	 , nvl(winner_flag,'N') winner
      , case when olap_sys.w_common_pkg.is_prime_number(digit) = 1 then 0 else 
