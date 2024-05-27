@@ -501,8 +501,6 @@ begin
 		 , PF6 = 0
 		 , CHG6 = '.'
 		 , SORTEO_ACTUAL = null
-		 , ACIERTOS_CNT = 0
-		 , REPETIDOS_CNT = 0
 		 , INCIDENCIA = 0
 		 , INCIDENCIA_CNT = 0
 		 , JUGAR_FLAG = 'N'
