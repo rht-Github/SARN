@@ -728,54 +728,57 @@ begin
 		   and prediccion_sorteo = pn_drawing_id;   
 				   
 		for i in c_main (pn_drawing_id => pn_drawing_id -1) loop
-			dbms_output.put_line(i.id||' - '||i.b_type||' - '||i.digit||' - '||i.winner);
-			--!posicion1
-			if i.b_type = 'B1' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1
-				 where IA1 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;
-
-			--!posicion2
-			if i.b_type = 'B2' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1
-				 where IA2 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;
+			if i.winner = CV$ACIERTO then
+				dbms_output.put_line(i.id||' - '||i.b_type||' - '||i.digit||' - '||i.winner||' - '||pn_list_id);
 			
-			--!posicion3
-			if i.b_type = 'B3' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1
-				 where IA3 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;		
+				--!posicion1
+				if i.b_type = 'B1' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1
+					 where IA1 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;
 
-			--!posicion4
-			if i.b_type = 'B4' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1			    
-				 where IA4 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;	
+				--!posicion2
+				if i.b_type = 'B2' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1
+					 where IA2 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;
+				
+				--!posicion3
+				if i.b_type = 'B3' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1
+					 where IA3 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;		
 
-			--!posicion5
-			if i.b_type = 'B5' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1
-				 where IA5 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;	
+				--!posicion4
+				if i.b_type = 'B4' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1			    
+					 where IA4 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;	
 
-			--!posicion6
-			if i.b_type = 'B6' and i.winner = CV$ACIERTO then
-				update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-				   set ACIERTOS_CNT = nvl(ACIERTOS_CNT,0) + 1
-				 where IA6 = i.digit
-				   and LIST_ID = pn_list_id;		 		
-			end if;	
+				--!posicion5
+				if i.b_type = 'B5' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1
+					 where IA5 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;	
+
+				--!posicion6
+				if i.b_type = 'B6' then
+					update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+					   set ACIERTOS_CNT = ACIERTOS_CNT + 1
+					 where IA6 = i.digit
+					   and LIST_ID = pn_list_id;		 		
+				end if;
+			end if;
 		end loop;	
 
 		--!actualizando el campo de aciertos history
