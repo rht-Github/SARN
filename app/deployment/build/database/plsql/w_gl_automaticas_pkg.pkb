@@ -673,9 +673,10 @@ procedure contar_aciertos_repetidos(pn_drawing_id		number
 	cursor c_resultados (pn_drawing_id		number) is
 	with resultado_tbl as (
 	select comb1||','||comb2||','||comb3||','||comb4||','||comb5||','||comb6 str
+	     , gambling_id id
 	  from olap_sys.sl_gamblings
 	 where gambling_id = pn_drawing_id 
-	) select regexp_substr((select str from resultado_tbl),'[^,]+',1,level) digit
+	) select regexp_substr((select str from resultado_tbl),'[^,]+',1,level) digit, (select id from resultado_tbl) id
 					   from dual 
 					 connect by level <= length((select str from resultado_tbl))-length(replace((select str from resultado_tbl),',',''))+1;	
 	
@@ -791,18 +792,25 @@ begin
 		end loop;
 		
 		--!actualizando el campo de numeros repetidos
-		for r in c_resultados (pn_drawing_id	=> pn_drawing_id) loop
+		--!en base a los resultados del sorteo anterior
+		for r in c_resultados (pn_drawing_id	=> pn_drawing_id -1) loop
+			dbms_output.put_line(r.id||' - '||r.digit);
+			
 			--!posicion1
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
 			   set REPETIDOS_CNT = nvl(REPETIDOS_CNT,0) + 1
 			 where IA1 = r.digit
 			   and LIST_ID = pn_list_id; 
-
+			
+			dbms_output.put_line(sql%rowcount||' repetidos - B1');
+			
 			--!posicion2
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
 			   set REPETIDOS_CNT = nvl(REPETIDOS_CNT,0) + 1
 			 where IA2 = r.digit
 			   and LIST_ID = pn_list_id; 
+
+			dbms_output.put_line(sql%rowcount||' repetidos - B2');
 
 			--!posicion3
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
@@ -810,23 +818,31 @@ begin
 			 where IA3 = r.digit
 			   and LIST_ID = pn_list_id; 
 
+			dbms_output.put_line(sql%rowcount||' repetidos - B3');
+			
 			--!posicion4
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
 			   set REPETIDOS_CNT = nvl(REPETIDOS_CNT,0) + 1
 			 where IA4 = r.digit
 			   and LIST_ID = pn_list_id; 
-			 
+			
+			dbms_output.put_line(sql%rowcount||' repetidos - B4');
+			
 			--!posicion5
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
 			   set REPETIDOS_CNT = nvl(REPETIDOS_CNT,0) + 1
 			 where IA5 = r.digit
 			   and LIST_ID = pn_list_id; 		 
-			 
+
+			dbms_output.put_line(sql%rowcount||' repetidos - B5');
+			
 			--!posicion6
 			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
 			   set REPETIDOS_CNT = nvl(REPETIDOS_CNT,0) + 1
 			 where IA6 = r.digit
-			   and LIST_ID = pn_list_id; 		 
+			   and LIST_ID = pn_list_id; 
+
+			dbms_output.put_line(sql%rowcount||' repetidos - B6');	
 		end loop;
 		
 		--!actualizando el contador del header con el contador de aciertos mayores a 3 

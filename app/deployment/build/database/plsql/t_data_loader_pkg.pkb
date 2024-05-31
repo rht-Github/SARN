@@ -1458,6 +1458,9 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 				--!evaluacion de las predicciones
 				w_gl_automaticas_pkg.evaluate_prediccion_handler(pn_gambling_id => i.gambling_id);
 				
+				--!actualizar la informacion de gl como frecuencia, ley del tercio, ciclo aparicion, etc
+				w_gl_automaticas_pkg.upd_gl_automaticas_handler(pv_ca_comb_flag => 'Y');
+				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;
 	           end if;
