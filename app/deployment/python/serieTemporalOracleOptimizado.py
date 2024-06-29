@@ -14,13 +14,18 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import GaussianNB
 from statsmodels.tsa.arima.model import ARIMA
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeRegressor
 import warnings
 
 # Suprimir todas las advertencias (no recomendado a menos que sepas lo que estás haciendo)
 warnings.filterwarnings("ignore")
 
 #valores constantes
-HISTORICO = 800
+HISTORICO = 830
+RANDOM_STATE = 42
+TEST_SIZE = 0.2
 ARREGLO_CONFIG = [[1,"Frecuencia","SELECT GAMBLING_DATE FECHA, CU1 P1, CU2 P2, CU3 P3, CU4 P4, CU5 P5, CU6 P6, GAMBLING_ID ID",1]
 				 ,[2,"Ley_del_Tercio","SELECT GAMBLING_DATE FECHA, CLT1 P1, CLT2 P2, CLT3 P3, CLT4 P4, CLT5 P5, CLT6 P6, GAMBLING_ID ID",1]
 				 ,[3,"Numerica","SELECT GAMBLING_DATE FECHA, COMB1 P1, COMB2 P2, COMB3 P3, COMB4 P4, COMB5 P5, COMB6 P6, GAMBLING_ID ID",1]
@@ -28,7 +33,7 @@ ARREGLO_CONFIG = [[1,"Frecuencia","SELECT GAMBLING_DATE FECHA, CU1 P1, CU2 P2, C
                  ,[5,"Preferente","SELECT FECHA, P1, P2, P3, P4, P5, P6, ID",3]
 				  ]
 
-#valores que se setean para cada sorteo
+#valores que se setean par a cada sorteo
 GUARDA_PREDICCION=True
 
 def recuperar_id_base ():
@@ -166,13 +171,13 @@ def crear_prediccion_RandomForestRegressor( posicion:int, fecha_sorteo, df, arre
 	# Dividir los datos en conjunto de entrenamiento y prueba
 	#X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2,
-														random_state=0)
+	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=TEST_SIZE,
+														random_state=RANDOM_STATE)
 
 	# Entrenar un modelo de regresión (Random Forest en este caso)
 	#model = RandomForestRegressor(n_estimators=200, max_depth= 10, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	model = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=0)
+	model = RandomForestRegressor(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=RANDOM_STATE)
 	model.fit(X_train, y_train)
 
 	# Predecir el siguiente valor en base a la fecha del proximo sorteo
@@ -222,13 +227,13 @@ def crear_prediccion_RandomForestClassifier( posicion:int, fecha_sorteo, df, arr
 	# Dividir los datos en conjunto de entrenamiento y prueba
 	#X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=0.2,
-														random_state=0)
+	X_train, X_test, y_train, y_test = train_test_split(df[['DIAS']], df[[posicion_str]], test_size=TEST_SIZE,
+														random_state=RANDOM_STATE)
 
 	# Entrenar un modelo de regresión (Random Forest en este caso)
 	#model = RandomForestClassifier(n_estimators=200, max_depth= 10, random_state=42)
 	#esta modificacion es en base al articulo customer churn prediction
-	model = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=0)
+	model = RandomForestClassifier(n_estimators=100, max_depth=10, min_samples_split=5, min_samples_leaf=2, max_features='sqrt', bootstrap=True, random_state=RANDOM_STATE)
 	model.fit(X_train, y_train)
 
 	# Predecir el siguiente valor en base a la fecha del proximo sorteo
@@ -279,12 +284,12 @@ def crear_prediccion_XGBRegressor( posicion:int, fecha_sorteo, df, arreglo_entra
 	#													test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=0)
+														test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Inicializar y entrenar el modelo con hiperparámetros optimizados
 	#model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=0)
+	model = XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=RANDOM_STATE)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -340,12 +345,12 @@ def crear_prediccion_HistGradientBoostingRegressor( posicion:int, fecha_sorteo, 
 	#													test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=0)
+														test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Inicializar y entrenar el modelo con hiperparámetros optimizados
 	#model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=0)
+	model = HistGradientBoostingRegressor(max_iter=100, learning_rate=0.1, max_depth=5, random_state=RANDOM_STATE)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -400,12 +405,12 @@ def crear_prediccion_HistGradientBoostingClassifier( posicion:int, fecha_sorteo,
 	#X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
 	#													test_size=0.2, random_state=42)
 	X_train, X_test, y_train, y_test = train_test_split(df[['DiasDesdeInicio']], df[posicion_str],
-														test_size=0.2, random_state=0)
+														test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Inicializar y entrenar el modelo
 	#model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=0)
+	model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, max_depth=5, random_state=RANDOM_STATE)
 	model.fit(X_train, y_train)
 
 	# Realizar la predicción para el siguiente elemento
@@ -457,8 +462,17 @@ def crear_prediccion_MLPClassifier( posicion:int, fecha_sorteo, df, arreglo_entr
 	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
 
 	# Separar los datos de entrenamiento y prueba
-	X_train = df[['DiasDesdeInicio']][:len(df) - 1]
-	y_train = df[posicion_str][:-1]
+	#X_train = df[['DiasDesdeInicio']][:len(df) - 1]
+	#y_train = df[posicion_str][:-1]
+	X = df[['DiasDesdeInicio', 'id']]
+	y = df[posicion_str]
+
+	# Normalizar las características
+	scaler = StandardScaler()
+	X_scaled = scaler.fit_transform(X)
+
+	# Dividir los datos en conjuntos de entrenamiento y prueba
+	X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Inicializar y entrenar el modelo de red neuronal
 	#model = MLPClassifier(hidden_layer_sizes=(100,), max_iter=100)
@@ -516,9 +530,10 @@ def crear_prediccion_KNeighborsClassifier( posicion:int, fecha_sorteo, df, arreg
 	# Separar los datos de entrenamiento y prueba
 	X = df[['DiasDesdeInicio']].values
 	y = df[posicion_str].values
+
 	#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Normalizar los datos
 	scaler = StandardScaler()
@@ -588,7 +603,7 @@ def crear_prediccion_GaussianNB( posicion:int, fecha_sorteo, df, arreglo_entrada
 	y = df[posicion_str].values
 	#X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 	# esta modificacion es en base al articulo customer churn prediction
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
 	# Normalizar los datos
 	scaler = StandardScaler()
@@ -675,7 +690,8 @@ def crear_prediccion_Arima( posicion:int, fecha_sorteo, df, arreglo_entrada):
 	return arreglo_salida
 
 
-def crear_prediccion_par_RandomForestClassifier ( posicion:int, fecha_sorteo, df, arreglo_entrada):
+
+def crear_prediccion_SVR( posicion:int, fecha_sorteo, df, arreglo_entrada):
 
 	# extraemos la info de cada columna
 	posicion_str = 'p' + str(posicion)
@@ -692,47 +708,178 @@ def crear_prediccion_par_RandomForestClassifier ( posicion:int, fecha_sorteo, df
 	# Ordenar el DataFrame por fecha
 	df = df.sort_values(by='fecha')
 
-	# Crear una nueva columna que indique si el número es par
-	df['PAR_IMPAR'] = df[posicion_str] % 2 == 0
+	# Crear una nueva columna de tiempo para entrenar el modelo
+	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
 
-	# Separar las características (X) y las etiquetas (y)
-	X = df[[posicion_str]]
-	y = df['PAR_IMPAR']
+	# Separar los datos en conjunto de entrenamiento y prueba
+	X = df[['DiasDesdeInicio', 'id']]
+	y = df[posicion_str]
+
+	# Normalizar las características
+	scaler = StandardScaler()
+	X_scaled = scaler.fit_transform(X)
 
 	# Dividir los datos en conjuntos de entrenamiento y prueba
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+	X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
 
-	# Crear un modelo RandomForestClassifier
-	model = RandomForestClassifier()
+	# Entrenar el modelo SVM
+	svm_model = SVC(kernel='rbf')
+	svm_model.fit(X_train, y_train)
 
-	# Entrenar el modelo
-	model.fit(X_train, y_train)
+	# Predecir el siguiente valor en base a la fecha del proximo sorteo
+	fecha_prediccion = datetime.strptime(fecha_sorteo, '%d-%m-%Y')
+	dias_desde_inicio = (fecha_prediccion - df['fecha'].min()).days
+	sorteo_siguiente = df['id'].max()+1
+	X_objetivo = scaler.transform([[dias_desde_inicio, sorteo_siguiente]])
+	prediccion = svm_model.predict(X_objetivo)
 
-	# Predecir la probabilidad de que el siguiente valor sea par
-	probabilidad_par = str(model.predict_proba([[11]])[:,1])
+	# Calcular el error cuadrático medio
+	mse = mean_squared_error(y_test, prediccion)
+	print("Error cuadrático medio:", mse)
 
-	#rutina para obtener la parte numerica solamente
-	contenido = probabilidad_par[2:probabilidad_par.find("]")]
-	if contenido=='.':
-		contenido='0.0'
-	probabilidad_par = contenido
-
-	#print(f"Probabilidad de que el siguiente valor de {posicion_str} sea par:", probabilidad_par,type(probabilidad_par))
+	#print(f'Predicción para el {fecha_sorteo} y posicion {posicion_str}: {round(prediccion[0])}')
 
 	arreglo_salida = arreglo_entrada
 
 	if posicion == 1:
-		arreglo_salida[0]=probabilidad_par
+		arreglo_salida[0]=round(prediccion[0])
 	if posicion == 2:
-		arreglo_salida[1]=probabilidad_par
+		arreglo_salida[1]=round(prediccion[0])
 	if posicion == 3:
-		arreglo_salida[2]=probabilidad_par
+		arreglo_salida[2]=round(prediccion[0])
 	if posicion == 4:
-		arreglo_salida[3]=probabilidad_par
+		arreglo_salida[3]=round(prediccion[0])
 	if posicion == 5:
-		arreglo_salida[4]=probabilidad_par
+		arreglo_salida[4]=round(prediccion[0])
 	if posicion == 6:
-		arreglo_salida[5]=probabilidad_par
+		arreglo_salida[5]=round(prediccion[0])
+	return arreglo_salida
+
+
+def crear_prediccion_DecisionTreeRegressor( posicion:int, fecha_sorteo, df, arreglo_entrada):
+
+	# extraemos la info de cada columna
+	posicion_str = 'p' + str(posicion)
+	fecha_arr = df['fecha']
+	pn_arr = df[posicion_str]
+
+	# Imprimir el arreglo
+	#print(f"fECHA: {fecha_arr}")
+	#print(f"p1: {pn_arr}")
+
+	# Convertir la columna 'FECHA' a formato de fecha
+	df['fecha'] = pd.to_datetime(df['fecha'], format='%d-%m-%Y')
+
+	# Ordenar el DataFrame por fecha
+	df = df.sort_values(by='fecha')
+
+	# Crear una nueva columna de tiempo para entrenar el modelo
+	df['DiasDesdeInicio'] = (df['fecha'] - df['fecha'].min()).dt.days
+
+	# Separar los datos en conjunto de entrenamiento y prueba
+	X = df[['DiasDesdeInicio', 'id']]
+	y = df[posicion_str]
+
+	# Normalizar las características
+	scaler = StandardScaler()
+	X_scaled = scaler.fit_transform(X)
+
+	# Dividir los datos en conjuntos de entrenamiento y prueba
+	X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+
+	# Entrenar el modelo SVM
+	dt_regressor = DecisionTreeRegressor(random_state=RANDOM_STATE)
+	dt_regressor.fit(X_train, y_train)
+
+	# Predecir el siguiente valor en base a la fecha del proximo sorteo
+	fecha_prediccion = datetime.strptime(fecha_sorteo, '%d-%m-%Y')
+	dias_desde_inicio = (fecha_prediccion - df['fecha'].min()).days
+	sorteo_siguiente = df['id'].max()+1
+	X_objetivo = scaler.transform([[dias_desde_inicio, sorteo_siguiente]])
+	prediccion = dt_regressor.predict(X_objetivo)
+
+	#print(f'Predicción para el {fecha_sorteo} y posicion {posicion_str}: {round(prediccion[0])}')
+
+	arreglo_salida = arreglo_entrada
+
+	if posicion == 1:
+		arreglo_salida[0]=round(prediccion[0])
+	if posicion == 2:
+		arreglo_salida[1]=round(prediccion[0])
+	if posicion == 3:
+		arreglo_salida[2]=round(prediccion[0])
+	if posicion == 4:
+		arreglo_salida[3]=round(prediccion[0])
+	if posicion == 5:
+		arreglo_salida[4]=round(prediccion[0])
+	if posicion == 6:
+		arreglo_salida[5]=round(prediccion[0])
+	return arreglo_salida
+
+
+def crear_prediccion_LinearRegression( posicion:int, fecha_sorteo, df, arreglo_entrada):
+
+	# extraemos la info de cada columna
+	posicion_str = 'p' + str(posicion)
+	fecha_arr = df['fecha']
+	pn_arr = df[posicion_str]
+
+	# Imprimir el arreglo
+	#print(f"fECHA: {fecha_arr}")
+	#print(f"p1: {pn_arr}")
+
+	# Convertir la columna 'FECHA' a formato de fecha
+	df['fecha'] = pd.to_datetime(df['fecha'], format='%d-%m-%Y')
+
+	# Ordenar el DataFrame por fecha
+	df = df.sort_values(by='fecha')
+
+	# Dividir la fecha en año, mes y día
+	df['year'] = df['fecha'].dt.year
+	df['monnth'] = df['fecha'].dt.month
+	df['day'] = df['fecha'].dt.day
+
+	# Dividir los datos en características (X) y la variable objetivo (y)
+	X = df[['year', 'monnth', 'day', 'id']]
+	y = df[posicion_str]
+
+	# Crear y entrenar el modelo de regresión lineal
+	model = LinearRegression()
+	model.fit(X, y)
+
+	# Predecir el valor de P1 para la fecha 7-5-2024
+	fecha_prediccion = datetime.strptime('7-5-2024', '%d-%m-%Y')
+	year_prediccion = fecha_prediccion.year
+	month_prediccion = fecha_prediccion.month
+	day_prediccion = fecha_prediccion.day
+	id_prediccion = df['id'].max()+1
+	prediccion = model.predict([[year_prediccion, month_prediccion, day_prediccion, id_prediccion]])
+
+
+	# Predecir el siguiente valor en base a la fecha del proximo sorteo
+	fecha_prediccion = datetime.strptime(fecha_sorteo, '%d-%m-%Y')
+	year_prediccion = fecha_prediccion.year
+	month_prediccion = fecha_prediccion.month
+	day_prediccion = fecha_prediccion.day
+	id_prediccion = df['id'].max()+1
+	prediccion = model.predict([[year_prediccion, month_prediccion, day_prediccion, id_prediccion]])
+
+	#print(f'Predicción para el {fecha_sorteo} y posicion {posicion_str}: {round(prediccion[0])}')
+
+	arreglo_salida = arreglo_entrada
+
+	if posicion == 1:
+		arreglo_salida[0]=round(prediccion[0])
+	if posicion == 2:
+		arreglo_salida[1]=round(prediccion[0])
+	if posicion == 3:
+		arreglo_salida[2]=round(prediccion[0])
+	if posicion == 4:
+		arreglo_salida[3]=round(prediccion[0])
+	if posicion == 5:
+		arreglo_salida[4]=round(prediccion[0])
+	if posicion == 6:
+		arreglo_salida[5]=round(prediccion[0])
 	return arreglo_salida
 
 
@@ -829,8 +976,12 @@ def ejecutar_tarea (select_stmt, mensaje, historico, id_base, guarda_prediccion,
 			crear_prediccion_GaussianNB(posicion, fecha_sorteo, dataframe, prediccion_gl)
 		elif nombre_algoritmo == "Arima":
 			crear_prediccion_GaussianNB(posicion, fecha_sorteo, dataframe, prediccion_gl)
-		elif nombre_algoritmo == "par_RandomForestClassifier":
-			crear_prediccion_par_RandomForestClassifier(posicion, fecha_sorteo, dataframe, prediccion_gl)
+		#elif nombre_algoritmo == "SVR":
+		#	crear_prediccion_SVR(posicion, fecha_sorteo, dataframe, prediccion_gl)
+		elif nombre_algoritmo == "DecisionTreeRegressor":
+			crear_prediccion_DecisionTreeRegressor(posicion, fecha_sorteo, dataframe, prediccion_gl)
+		elif nombre_algoritmo == "LinearRegression":
+			crear_prediccion_DecisionTreeRegressor(posicion, fecha_sorteo, dataframe, prediccion_gl)
 
 	print(mensaje)
 	print("Fecha Minima: ", dataframe['fecha'][0])
@@ -867,8 +1018,10 @@ def main():
 
 	if id_base > 0:
 		#imprimir los valores seteados para la ejecucion
+		print(f"random_state: {RANDOM_STATE}")
+		print(f"test_size: {TEST_SIZE}")
 		print(f"Tamaño de la muestra {HISTORICO} sorteos")
-		print("Sorteo Id: ",id_base)
+		print(f"Sorteo Id: {id_base}")
 		print("-------------------------------------")
 
 		nombre_algoritmo="RandomForestRegressor"
@@ -957,18 +1110,38 @@ def main():
 			if loop_index > 1: imprime_fecha_sorteo = False
 			ejecutar_tarea(contenido[2], contenido[1], HISTORICO, id_base, GUARDA_PREDICCION, nombre_algoritmo, imprime_fecha_sorteo, contenido[3])
 			loop_index += 1
-		"""
+
 		print("-------------------------------------")
-		nombre_algoritmo="par_RandomForestClassifier"
+		nombre_algoritmo="DecisionTreeRegressor"
 		print(nombre_algoritmo)
 		#ejecucion de los 3 escenarios
 		loop_index = 1
 		imprime_fecha_sorteo = True
 		for contenido in ARREGLO_CONFIG:
 			if loop_index > 1: imprime_fecha_sorteo = False
-			#esta tarea de debe de aplicar para datos numerico y no para Frecuencia y Ley del Tercio
-			if contenido[1]=='Numerica':
-				ejecutar_tarea(contenido[2], contenido[1], HISTORICO, id_base, GUARDA_PREDICCION, nombre_algoritmo, imprime_fecha_sorteo, contenido[3])
+			ejecutar_tarea(contenido[2], contenido[1], HISTORICO, id_base, GUARDA_PREDICCION, nombre_algoritmo, imprime_fecha_sorteo, contenido[3])
+			loop_index += 1
+
+		print("-------------------------------------")
+		nombre_algoritmo="LinearRegression"
+		print(nombre_algoritmo)
+		#ejecucion de los 3 escenarios
+		loop_index = 1
+		imprime_fecha_sorteo = True
+		for contenido in ARREGLO_CONFIG:
+			if loop_index > 1: imprime_fecha_sorteo = False
+			ejecutar_tarea(contenido[2], contenido[1], HISTORICO, id_base, GUARDA_PREDICCION, nombre_algoritmo, imprime_fecha_sorteo, contenido[3])
+			loop_index += 1
+		"""
+		print("-------------------------------------")
+		nombre_algoritmo="SVR"
+		print(nombre_algoritmo)
+		#ejecucion de los 3 escenarios
+		loop_index = 1
+		imprime_fecha_sorteo = True
+		for contenido in ARREGLO_CONFIG:
+			if loop_index > 1: imprime_fecha_sorteo = False
+			ejecutar_tarea(contenido[2], contenido[1], HISTORICO, id_base, GUARDA_PREDICCION, nombre_algoritmo, imprime_fecha_sorteo, contenido[3])
 			loop_index += 1
 		"""
 

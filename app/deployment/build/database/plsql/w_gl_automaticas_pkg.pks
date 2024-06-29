@@ -41,13 +41,14 @@ procedure ins_gl_automaticas_handler(pv_gambling_type		varchar2 default 'mrtr'
 
 --!handler para actualizar jugadas en la tabla GL_AUTOMATICAS_DETAIL
 --!en base a la info de gigaloterias
-procedure upd_gl_automaticas_handler(pv_ca_comb_flag    varchar2 default 'Y');
+procedure upd_gl_automaticas_handler(pn_drawing_id     number
+								   , pv_ca_comb_flag    varchar2 default 'Y');
 
 --!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
 procedure aciertos_repetidos_handler(pn_drawing_id		number);
 
 --!evaluar las predicciones de frecuencia y ley del tercio
-procedure evaluate_prediccion_handler(pn_gambling_id               	number);
+procedure evaluate_prediccion_handler(pn_drawing_id               	number);
 
 --!insertar las predicciones en la tabla predicciones
 procedure predicciones_handler(pv_nombre			varchar2

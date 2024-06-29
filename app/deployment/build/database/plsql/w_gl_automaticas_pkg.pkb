@@ -793,7 +793,7 @@ begin
 		
 		--!actualizando el campo de numeros repetidos
 		--!en base a los resultados del sorteo anterior
-		for r in c_resultados (pn_drawing_id	=> pn_drawing_id -1) loop
+		for r in c_resultados (pn_drawing_id	=> pn_drawing_id) loop
 			dbms_output.put_line(r.id||' - '||r.digit);
 			
 			--!posicion1
@@ -890,19 +890,16 @@ end aciertos_repetidos_handler;
 
 --!handler para actualizar jugadas en la tabla GL_AUTOMATICAS_DETAIL
 --!en base a la info de gigaloterias
-procedure upd_gl_automaticas_handler(pv_ca_comb_flag    varchar2 default 'Y') is
+procedure upd_gl_automaticas_handler(pn_drawing_id     number
+								   , pv_ca_comb_flag    varchar2 default 'Y') is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_gl_automaticas_handler';
-	ln$max_gambling_id				 number := 0;
 begin							   
-	--!obtener el ultimo id de la info de gigaloterias
-	ln$max_gambling_id := get_max_id();
-	
 	for k in c_automaticas_header loop 
 		--!actualizar en el header el ID del sorteo que se esta procesando
-		upd_gl_automaticas_header(pn_drawing_id => ln$max_gambling_id
+		upd_gl_automaticas_header(pn_drawing_id => pn_drawing_id
 		                        , pn_list_id    => k.list_id); 
 		--!actualizar los valores de frecuencia, ley del tercio, ciclo de aparicion, pronos por ciclo y numeros preferidos
-		upd_gl_automaticas_detail(pn_drawing_id => ln$max_gambling_id
+		upd_gl_automaticas_detail(pn_drawing_id => pn_drawing_id
 								, pv_ca_comb_flag => pv_ca_comb_flag
 								, pn_list_id    => k.list_id);
 	end loop;						
@@ -1084,15 +1081,15 @@ exception
 end evaluate_prediccion; 
 
 
-procedure evaluate_prediccion_handler(pn_gambling_id               	number) is
+procedure evaluate_prediccion_handler(pn_drawing_id               	number) is
 LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'evaluate_prediccion_handler'; 
 begin 
 	DBMS_OUTPUT.PUT_LINE('-------------------------------');
 	DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
-	upd_predicciones(pn_drawing_id => pn_gambling_id);
+	upd_predicciones(pn_drawing_id => pn_drawing_id);
 
 	--!se evaluan las predicciones con el resultado del sorteo			 
-	evaluate_prediccion(pn_drawing_id => pn_gambling_id);
+	evaluate_prediccion(pn_drawing_id => pn_drawing_id);
 	
 exception
  when others then

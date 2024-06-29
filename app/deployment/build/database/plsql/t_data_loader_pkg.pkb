@@ -1447,19 +1447,19 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 																	  , x_err_code        => x_err_code);
 
 				--!proceso para insertar lo resultados en la tabla mr_resultados_summary
-				ins_mr_resultados_summary;
+				--ins_mr_resultados_summary;
 				
 				--!insertando el resultado del sorteo en la tabla mr_resultados
 				ins_mr_resultados (pn_gambling_id => i.gambling_id);
 								
+				--!actualizar la informacion de gl como frecuencia, ley del tercio, ciclo aparicion asi como numero de sorteo, etc
+				w_gl_automaticas_pkg.upd_gl_automaticas_handler(pn_drawing_id => i.gambling_id
+															  , pv_ca_comb_flag => 'Y');
 				--!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
 				w_gl_automaticas_pkg.aciertos_repetidos_handler(pn_drawing_id => i.gambling_id);
 
 				--!evaluacion de las predicciones
-				w_gl_automaticas_pkg.evaluate_prediccion_handler(pn_gambling_id => i.gambling_id);
-				
-				--!actualizar la informacion de gl como frecuencia, ley del tercio, ciclo aparicion, etc
-				w_gl_automaticas_pkg.upd_gl_automaticas_handler(pv_ca_comb_flag => 'Y');
+				w_gl_automaticas_pkg.evaluate_prediccion_handler(pn_drawing_id => i.gambling_id);
 				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;
@@ -3091,13 +3091,13 @@ dbms_output.put_line('current: '||x_GambTbl(t).gambling_id||'~'||x_GambTbl(t).pr
      dbms_output.put_line('----------------------------------');
      dbms_output.put_line(LV$PROCEDURE_NAME);
 
-     if is_enable_gigaloterias_pattern (pv_gambling_type => pv_gambling_type
-                                      , pn_gambling_id   => pn_gambling_id) = 'Y' then
+--     if is_enable_gigaloterias_pattern (pv_gambling_type => pv_gambling_type
+--                                      , pn_gambling_id   => pn_gambling_id) = 'Y' then
         gigaloterias_patterns_wrapper (pv_gambling_type => pv_gambling_type
                                      , pn_gambling_id   => pn_gambling_id  
                                      , x_err_code       => x_err_code      
                                       );
-     end if;
+--     end if;
   exception
     when others then
       x_err_code := sqlcode;
