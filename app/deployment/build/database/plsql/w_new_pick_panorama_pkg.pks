@@ -652,13 +652,16 @@ procedure mapa_numeros_primos_handler;
 								  
 --!mostrar el conteo de las repeticiones de numeros en funcion del digito base 								  
 procedure listado_numeros_handler (pn_comb1   number
-                                 , pn_historico number default 100);								  
+                                 , pn_historico number default 100);
+								 
+--!ejecuta el proceso numero_siguiente_wrapper para cada posicion del resultado
+procedure numero_siguiente_handler(pn_drawing_id	number
+                                 , pn_historico    number default 0);
 
---!buscar el patron del numero siguiente en base a un numero datos
-procedure numero_siguiente_handler (pn_comb   		number
-								  , pn_posicion		number default 1
-								  , pn_historico    number default 0
-								  , pn_order_by     number default 2);
+--!buscar el patron del numero siguiente en base a un numero dado
+procedure numero_siguiente_wrapper (pn_comb   		number
+								  , pn_posicion		number
+								  , pn_historico    number);
 
 --!procedimiento para insertar registros en la tabla plan_jugada_details
 procedure ins_plan_jugada_details(pv_drawing_type		VARCHAR2 DEFAULT 'mrtr'

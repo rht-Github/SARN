@@ -1,0 +1,10 @@
+rem purpose      : adding uk on position_digit_history_dtl 
+rem creation_date: 07/06/2024
+
+prompt adding pk on olap_sys.position_digit_history_dtl  
+
+create unique index olap_sys.pos_digit_history_dtl_uk on olap_sys.position_digit_history_dtl ( 
+  next_drawing_id, b_type, history_digit        
+) tablespace olap_small_index_tbl
+/
+show errors;

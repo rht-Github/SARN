@@ -11362,10 +11362,11 @@ begin
 	   where rownum <= pn_rownum;
 
 	if xtbl_last_pattern.count > 0 then
+--		dbms_output.put_line('paso 100');
 		--!funcion para recuperar el master_id existente o uno nuevo en based a una nueva secuencia
 		xn_master_id := get_master_id (pv_gl_type   => pv_gl_type
 									 , pn_drawing_id => pn_drawing_id);		
-		
+	
 		--dbms_output.put_line('xtbl_last_pattern.count: '||xtbl_last_pattern.count);
 		for i in xtbl_last_pattern.first..xtbl_last_pattern.last loop
 			--dbms_output.put_line(xn_master_id||'  '||pv_gl_type||'  '||pn_rownum||'  '||i||'  '||xtbl_last_pattern(i).drawing_id||'  '||xtbl_last_pattern(i).gl1||'  '||xtbl_last_pattern(i).gl2||'  '||xtbl_last_pattern(i).gl3||'  '||xtbl_last_pattern(i).gl4||'  '||xtbl_last_pattern(i).gl5||'  '||xtbl_last_pattern(i).gl6);
@@ -11389,7 +11390,7 @@ begin
 			end if;	
 		end loop;
 		--x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
-
+		
 		--!insertar registros dummy para actualizar la info posteriormente
 		ins_dummy_s_gl_mapas_cnt(pv_gl_type	    => pv_gl_type
 							   , pn_xrownum	    => pn_rownum
@@ -13054,8 +13055,8 @@ begin
 	ln$drawing_id_ini := (pn_drawing_id - pn_rownum) + 1;
 	ln$drawing_id_end := pn_drawing_id;
 	
---	dbms_output.put_line('2.xn_drawing_id_ini: '||xn_drawing_id_ini);
---	dbms_output.put_line('2.xn_drawing_id_end: '||xn_drawing_id_end);
+--	dbms_output.put_line('2.ln$drawing_id_ini: '||ln$drawing_id_ini);
+--	dbms_output.put_line('2.ln$drawing_id_end: '||ln$drawing_id_end);
 
 	
 	olap_sys.w_common_pkg.g_index := 1;
@@ -13900,7 +13901,7 @@ begin
 				    );
 --dbms_output.put_line('ln$drawing_id_search: '||ln$drawing_id_search);
 --dbms_output.put_line('ltbl$color_tbl.count: '||ltbl$color_tbl.count);
-
+--dbms_output.put_line('x_err_code: '||x_err_code);
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then	
 		--!funcion para recuperar el master_id de un patron de la tabla s_gl_mapas
 		load_history_mr_resultados (pv_gl_type			 => pv_gl_type
@@ -13913,6 +13914,7 @@ begin
 								   );
 --dbms_output.put_line('ln$drawing_id_ini: '||ln$drawing_id_ini);	
 --dbms_output.put_line('ln$drawing_id_end: '||ln$drawing_id_end);	
+--dbms_output.put_line('x_err_code: '||x_err_code);
 		if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							  
 			--!procedimiento para encontrar patrones en los mapas y actualizar datos en la tabla
 			search_pattern_data (pv_gl_type		      => pv_gl_type
@@ -13922,18 +13924,22 @@ begin
 							   , ptbl_color_tbl  	  => ltbl$color_tbl
 							   , ptbl_history_cnt_tbl => ltbl$history_cnt_tbl
 							   , x_err_code           => x_err_code);
+--dbms_output.put_line('paso 1');	
+--dbms_output.put_line('x_err_code: '||x_err_code);							   
 			if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then			
 				--!procedimiento para calcular el total de sorteos por patron
 				compute_drawing_cnts(pv_gl_type	=> pv_gl_type
 								   , pn_rownum	=> pn_rownum
 								   , x_err_code => x_err_code);
-				
+--dbms_output.put_line('paso 2');	
+--dbms_output.put_line('x_err_code: '||x_err_code);
 				if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 					--!proceso para calcular el promedio de sorteos a esperar para que pase una ocurrencia
 					compute_drawing_avg (pv_gl_type	=> pv_gl_type
 									   , pn_rownum	=> pn_rownum
 									   , x_err_code => x_err_code); 
-					
+--dbms_output.put_line('paso 3');		
+--dbms_output.put_line('x_err_code: '||x_err_code);
 					if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 						commit;
 						--!proceso para imprimir los resultados
@@ -22411,6 +22417,127 @@ exception
     raise; 
 end ordenar_resultados;
 
+--!procedimiento para insertar datos en la tabla header
+procedure ins_resultados_header(pn_drawing_id			number
+							  , pv_b_type				varchar2
+							  , pn_digit				number
+							  , pn_history_cnt			number
+							  , xn_header_id			in out nocopy number
+							  , x_err_code    			in out nocopy number) is
+							 
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_header';							 
+begin
+	insert into olap_sys.position_digit_history_header(header_id
+													 , drawing_id
+													 , b_type
+													 , digit
+													 , history_cnt)
+	values((select nvl(max(header_id),0) + 1 from olap_sys.position_digit_history_header)
+	      , pn_drawing_id
+		  , pv_b_type
+		  , pn_digit
+		  , pn_history_cnt) returning header_id into xn_header_id;
+	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	  
+exception
+  when others then
+	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_resultados_header;
+
+--!procedimiento para insertar datos en la tabla detail
+procedure ins_resultados_detail(pn_header_id			number
+							  , pn_history_digit		number
+							  , pn_match_cnt			number
+							  , pn_drawing_cnt			number
+							  , pv_drawing_list			varchar2
+							  , pn_next_drawing_id		number
+							  , pv_b_type				varchar2
+							  , x_err_code    			in out nocopy number) is
+							 
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_detail';							 
+begin
+	insert into olap_sys.position_digit_history_dtl(header_id
+												  , id
+												  , history_digit
+												  , match_cnt
+												  , drawing_cnt
+												  , drawing_list
+												  , next_drawing_id
+												  , b_type)
+	values(pn_header_id
+		 , (select nvl(max(id),0) + 1 from olap_sys.position_digit_history_dtl where header_id = pn_header_id and next_drawing_id = pn_next_drawing_id and b_type = pv_b_type)
+	     , pn_history_digit
+		 , pn_match_cnt
+		 , pn_drawing_cnt
+		 , pv_drawing_list
+		 , pn_next_drawing_id
+		 , pv_b_type);
+	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	 
+exception
+  when others then
+	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_resultados_detail;
+
+--!procedimiento para englobar los inserts en la tabla header y tabla detail
+procedure ins_resultados_handler(pn_comb   			  number
+							   , pn_posicion 		  number
+							   , pn_max_id  		  number
+							   , pn_historico         number
+							   , ptbl$resultados	  gt$resultado_tbl
+							   , ptbl$resultados_next gt$resultado_next_tbl) is
+							 
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_handler';	
+	ln$comb_match			NUMBER := 0;
+	ln$next_match			NUMBER := 0;
+	ln$history_duration     NUMBER := 0;
+	ln$err_code             NUMBER := 0;
+	ln$header_id			NUMBER := 0;
+	lv$b_type				VARCHAR2(2) := 'B'||to_char(pn_posicion);
+	
+	cursor c_first is
+	select description pos
+    , lpad(attribute1,3,'000') match_cnt 
+    , lpad(attribute2,4,'0000') history_duration
+    , attribute3 history_ids
+	  from olap_sys.w_lookups_fs 
+	 where CONTEXT = 'ORDENAR_RESULTADOS'
+	 order by match_cnt desc, pos; 
+		
+begin
+	--!procedimiento para insertar datos en la tabla header
+	ins_resultados_header(pn_drawing_id      => pn_max_id
+					    , pv_b_type          => lv$b_type
+					    , pn_digit           => pn_comb
+					    , pn_history_cnt     => pn_historico
+					    , xn_header_id       => ln$header_id
+					    , x_err_code         => ln$err_code);
+	
+	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							
+		for b in c_first loop
+			--!procedimiento para insertar datos en la tabla detail
+			ins_resultados_detail(pn_header_id		 => ln$header_id	
+								, pn_history_digit   => b.pos	
+								, pn_match_cnt       => b.match_cnt	
+								, pn_drawing_cnt     => b.history_duration	
+								, pv_drawing_list    => b.history_ids	
+								, pn_next_drawing_id => pn_max_id+1	
+								, pv_b_type          => lv$b_type	
+								, x_err_code         => ln$err_code);	
+								
+		end loop;
+		commit;
+	else
+		rollback;
+	end if;	
+exception
+  when others then
+	rollback;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_resultados_handler;
 
 --!buscar el patron del numero siguiente en base a un numero datos
 procedure imprimir_resultados (pn_comb   			number
@@ -22482,18 +22609,16 @@ begin
 	end if;	
 exception
   when others then
-	rollback;
 	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 
 end imprimir_resultados;
 
 
 --!buscar el patron del numero siguiente en base a un numero datos
-procedure numero_siguiente_handler  (pn_comb   		 number
-								   , pn_posicion	 number default 1
-								   , pn_historico    number default 0
-								   , pn_order_by     number default 2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'numero_siguiente_handler';
+procedure numero_siguiente_wrapper  (pn_comb   		 number
+								   , pn_posicion	 number
+								   , pn_historico    number) is
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'numero_siguiente_wrapper';
 	ln$max_id   			number := 0;
 	ltbl$resultados			gt$resultado_tbl;
 	ltbl$resultados_next    gt$resultado_next_tbl;
@@ -22519,23 +22644,99 @@ begin
 		
 		ordenar_resultados (pn_max_id => ln$max_id
 						  , ptbl$resultados_next => ltbl$resultados_next);
-		
+
+		--!procedimiento para englobar los inserts en la tabla header y tabla detail
+		ins_resultados_handler (pn_comb => pn_comb
+						      , pn_posicion => pn_posicion
+						      , pn_max_id => ln$max_id
+						      , pn_historico => pn_historico
+						      , ptbl$resultados => ltbl$resultados
+						      , ptbl$resultados_next => ltbl$resultados_next);
+		/*					
 		imprimir_resultados (pn_comb => pn_comb
 						   , pn_posicion => pn_posicion
 						   , pn_max_id => ln$max_id
 						   , pn_historico => pn_historico
 						   , pn_order_by => pn_order_by
 						   , ptbl$resultados => ltbl$resultados
-						   , ptbl$resultados_next => ltbl$resultados_next);
+						   , ptbl$resultados_next => ltbl$resultados_next);*/
 	end if;				   
 exception
   when others then
-	rollback;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end numero_siguiente_wrapper;
+
+--!ejecuta el proceso numero_siguiente_wrapper para cada posicion del resultado
+procedure numero_siguiente_handler(pn_drawing_id	number
+								 --!0:indica que se revisa todo el historial, de lo contrario se indica el numero de dias que se requiere consultar
+								 , pn_historico    number default 0) is
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'numero_siguiente_handler';
+	
+	cursor c_main (pn_drawing_id	number) is
+	with posicion_tbl as (
+	select gambling_id drawing_id
+		 , comb1 digit
+		 , 1 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id
+	union
+	select gambling_id drawing_id
+		 , comb2 digit
+		 , 2 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id
+	union
+	select gambling_id drawing_id
+		 , comb3 digit
+		 , 3 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id
+	union
+	select gambling_id drawing_id
+		 , comb4 digit
+		 , 4 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id
+	union
+	select gambling_id drawing_id
+		 , comb5 digit
+		 , 5 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id 
+	union
+	select gambling_id drawing_id
+		 , comb6 digit
+		 , 6 posicion
+	 from olap_sys.sl_gamblings
+	where gambling_id = pn_drawing_id
+	)
+	select drawing_id
+		 , digit
+		 , posicion
+	  from posicion_tbl;	
+begin
+	for k in c_main (pn_drawing_id => pn_drawing_id) loop
+		--!buscar el patron del numero siguiente en base a un numero datos
+		numero_siguiente_wrapper  (pn_comb   	 => k.digit
+							     , pn_posicion	 => k.posicion								 
+							     , pn_historico  => pn_historico); 
+
+		dbms_output.put_line(k.drawing_id||' - B'||to_char(k.posicion)||' - '||k.digit);
+		--!identificar el numero ganador
+		update olap_sys.position_digit_history_dtl
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where next_drawing_id = k.drawing_id
+		   and b_type = 'B'||to_char(k.posicion)
+		   and history_digit = k.digit;
+	end loop;
+	commit;	
+exception
+  when others then
 	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 
 end numero_siguiente_handler;
-
-
 	
 end w_new_pick_panorama_pkg;
 /

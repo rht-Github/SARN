@@ -1447,7 +1447,8 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 																	  , x_err_code        => x_err_code);
 
 				--!proceso para insertar lo resultados en la tabla mr_resultados_summary
-				--ins_mr_resultados_summary;
+				--!este proceso se utiliza para generar datos para el conteo de patrones en mapas de lt
+				ins_mr_resultados_summary;
 				
 				--!insertando el resultado del sorteo en la tabla mr_resultados
 				ins_mr_resultados (pn_gambling_id => i.gambling_id);
@@ -1460,6 +1461,9 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 
 				--!evaluacion de las predicciones
 				w_gl_automaticas_pkg.evaluate_prediccion_handler(pn_drawing_id => i.gambling_id);
+				
+				--!ejecuta el proceso numero_siguiente_wrapper para cada posicion del resultado
+				olap_sys.w_new_pick_panorama_pkg.numero_siguiente_handler(pn_drawing_id => i.gambling_id);			
 				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;

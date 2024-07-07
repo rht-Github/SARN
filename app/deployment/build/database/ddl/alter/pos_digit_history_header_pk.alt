@@ -1,0 +1,7 @@
+rem purpose      : creating constraint primary key on table position_digit_history_dtl
+
+prompt creating constraint primary key on table position_digit_history_dtl
+
+alter table olap_sys.position_digit_history_dtl
+add constraint pos_digit_history_header_pk primary key (drawing_id, b_type, digit)
+/
