@@ -13,15 +13,15 @@ gn$ins_cnt			NUMBER := 0;
 
 --!borrando el registro de la prediccion que se va a insertar
 --!para permitir que el programa en python se pueda ajeuar multiples veces
-procedure del_predicciones(pv_nombre			varchar2
+procedure del_predicciones_all(pv_nombre			varchar2
 						 , pn_prediccion_sorteo number
 						 , pv_tipo				varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'del_predicciones';
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'del_predicciones_all';
 begin
 
 	--!borrando el registro de la prediccion que se va a insertar
 	--!para permitir que el programa en python se pueda ajeuar multiples veces
-	delete olap_sys.predicciones 
+	delete olap_sys.predicciones_all 
 	 where prediccion_nombre = pv_nombre
 	   and prediccion_sorteo = pn_prediccion_sorteo
 	   and prediccion_tipo   = pv_tipo;
@@ -31,112 +31,7 @@ exception
 	rollback;
 	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 	
-end del_predicciones;
-
---!insertar las predicciones en la tabla predicciones
-procedure ins_predicciones(pv_nombre			varchar2
-						 , pn_muestra			number
-						 , pd_fecha				date
-						 , pd_fecha_sorteo_min  date
-						 , pd_fecha_sorteo_max	date
-						 , pv_tipo				varchar2
-						 , pv_pre1				varchar2
-						 , pv_pre2				varchar2
-						 , pv_pre3				varchar2
-						 , pv_pre4				varchar2
-						 , pv_pre5				varchar2
-						 , pv_pre6				varchar2
-						 , pn_prediccion_sorteo number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_predicciones';
-begin
-null;
-	--!insertando el nuevo registro de la prediccion
-	insert into olap_sys.predicciones (prediccion_id
-									 , prediccion_nombre
-									 , prediccion_muestra
-									 , prediccion_fecha
-									 , fecha_sorteo_min
-									 , fecha_sorteo_max
-									 , prediccion_tipo
-									 , pre1
-									 , pre2
-									 , pre3
-									 , pre4
-									 , pre5
-									 , pre6
-									 , prediccion_sorteo)
-	values ((select nvl(max(prediccion_id),0)+1 from olap_sys.predicciones)
-	      , pv_nombre
-	      , pn_muestra
-	      , pd_fecha
-	      , pd_fecha_sorteo_min
-	      , pd_fecha_sorteo_max
-	      , pv_tipo
-	      , pv_pre1
-	      , pv_pre2
-	      , pv_pre3
-	      , pv_pre4
-	      , pv_pre5
-	      , pv_pre6
-		  , pn_prediccion_sorteo);
-
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_predicciones;
-
---!insertar las predicciones en la tabla predicciones
-procedure predicciones_handler(pv_nombre			varchar2
-							 , pn_muestra			number
-							 , pv_fecha				varchar2
-							 , pv_fecha_sorteo_min  varchar2
-							 , pv_fecha_sorteo_max	varchar2
-							 , pv_tipo				varchar2
-							 , pv_pre1				varchar2
-							 , pv_pre2				varchar2
-							 , pv_pre3				varchar2
-							 , pv_pre4				varchar2
-							 , pv_pre5				varchar2
-							 , pv_pre6				varchar2
-							 , pn_prediccion_sorteo number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'predicciones_handler';
-	ld$fecha				date;
-	ld$fecha_sorteo_min  	date;
-	ld$fecha_sorteo_max		date;
-begin	
-	ld$fecha			:= to_date(substr(pv_fecha,1,10),'DD-MM-YYYY');
-	ld$fecha_sorteo_min := to_date(substr(pv_fecha_sorteo_min,1,10),'DD-MON-YY');
-	ld$fecha_sorteo_max	:= to_date(substr(pv_fecha_sorteo_max,1,10),'DD-MON-YY');
-	
-	--!borrando el registro de la prediccion que se va a insertar
-	--!para permitir que el programa en python se pueda ajeuar multiples veces
-	del_predicciones(pv_nombre            => pv_nombre
-				   , pn_prediccion_sorteo => pn_prediccion_sorteo
-				   , pv_tipo              => pv_tipo); 
-				   
-	--!insertar las predicciones en la tabla predicciones
-	ins_predicciones(pv_nombre           => pv_nombre
-				   , pn_muestra          => pn_muestra
-				   , pd_fecha            => ld$fecha
-				   , pd_fecha_sorteo_min => ld$fecha_sorteo_min
-				   , pd_fecha_sorteo_max => ld$fecha_sorteo_max
-				   , pv_tipo			 => pv_tipo
-				   , pv_pre1			 => pv_pre1
-				   , pv_pre2			 => pv_pre2
-				   , pv_pre3			 => pv_pre3
-				   , pv_pre4			 => pv_pre4
-				   , pv_pre5			 => pv_pre5
-				   , pv_pre6			 => pv_pre6
-				   , pn_prediccion_sorteo => pn_prediccion_sorteo);	
-    commit;	
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end predicciones_handler;
+end del_predicciones_all;
 
 
 --!insertar un registro a la tabla GL_AUTOMATICAS_DETAIL
@@ -416,7 +311,8 @@ procedure upd_gl_automaticas_detail(pn_drawing_id		number
 	select percentile_disc(0.38) within group (order by jcomb_sum) per_jcomb_sum_ini
 		 , percentile_disc(0.62) within group (order by jcomb_sum) per_jcomb_sum_end
 	  from jugadas_tbl
-	), jugadas_rango_tbl as (
+	)
+	, jugadas_rango_tbl as (
 	select *
 	  from jugadas_tbl
 	 where jcomb_sum between (select per_jcomb_sum_ini from jugadas_percentil_tbl) and (select per_jcomb_sum_end from jugadas_percentil_tbl)
@@ -452,7 +348,7 @@ procedure upd_gl_automaticas_detail(pn_drawing_id		number
 	select list_id
 		 , id 
 		 , decode(ca1,-1,0,ca1)+decode(ca2,-1,0,ca2)+decode(ca3,-1,0,ca3)+decode(ca4,-1,0,ca4)+decode(ca5,-1,0,ca5)+decode(ca6,-1,0,ca6) ca_sum
-		 , ia1+ia2+ia3+ia4+ia5+ia6 comb_sum
+		 , comb_sum
 	  from olap_sys.gl_automaticas_detail
      where list_id = pn_list_id		  
 	)
@@ -691,18 +587,32 @@ procedure contar_aciertos_repetidos(pn_drawing_id		number
 	   and ad.aciertos_cnt > 0
 	   and ah.list_id = pn_list_id; 
 
-	--!cursor para contar jugadas con 4 o 5 aciertos
-	cursor c_aciertos_4_5 (pn_list_id		number) is
-	select ad.aciertos_cnt aciertos
-		 , count(1) aciertos_cnt
-	  from olap_sys.gl_automaticas_header ah
-	     , olap_sys.gl_automaticas_detail ad
-	 where ah.gambling_type = ad.gambling_type 
-	   and ah.list_id = ad.list_id
-	   and ah.stop_date is null
-       and ad.aciertos_cnt > 3
-       and ah.list_id = pn_list_id
-	  group by ad.aciertos_cnt;
+    cursor c_4_aciertos is
+    select list_id
+         , 4 aciertos
+         , count(1) aciertos_cnt 
+      from olap_sys.gl_automaticas_detail
+     where aciertos_accum > 0
+       and instr(aciertos_history,'(4)') > 0 
+     group by list_id;
+
+    cursor c_5_aciertos is     
+    select list_id
+         , 5 aciertos
+         , count(1) aciertos_cnt
+      from olap_sys.gl_automaticas_detail
+     where aciertos_accum > 0
+       and instr(aciertos_history,'(5)') > 0 
+     group by list_id;
+
+    cursor c_6_aciertos is    
+    select list_id
+         , 6 aciertos
+         , count(1) aciertos_cnt
+      from olap_sys.gl_automaticas_detail
+     where aciertos_accum > 0
+       and instr(aciertos_history,'(6)') > 0 
+     group by list_id;
 begin							   
 	--!verificando existencia de registros en la tabla detalle
 	select count(1) cnt
@@ -719,12 +629,6 @@ begin
 		   set aciertos_cnt = 0
 			 , repetidos_cnt = 0
 		 where list_id = pn_list_id;
-			 
-		--!limpiando el contador de aciertos de las predicciones numericas	 
-		update olap_sys.predicciones
-		   set MATCH_CNT = 0
-		 where prediccion_tipo in ('Numerica','Primo_Impar_Par')
-		   and prediccion_sorteo = pn_drawing_id;   
 				   
 		for i in c_main (pn_drawing_id => pn_drawing_id -1) loop
 			if i.winner = CV$ACIERTO then
@@ -782,9 +686,10 @@ begin
 
 		--!actualizando el campo de aciertos history
 		for a in c_aciertos (pn_list_id => pn_list_id) loop
-			update OLAP_SYS.GL_AUTOMATICAS_DETAIL
-			   set ACIERTOS_HISTORY = ACIERTOS_HISTORY||'~'||pn_drawing_id||'('||ACIERTOS_CNT||')'
-				 , ACIERTOS_ACCUM = ACIERTOS_ACCUM + ACIERTOS_CNT
+            update OLAP_SYS.GL_AUTOMATICAS_DETAIL
+			   set ACIERTOS_HISTORY = ACIERTOS_HISTORY||'~'||pn_drawing_id||'('||a.ACIERTOS_CNT||')'
+				 , ACIERTOS_ACCUM = ACIERTOS_ACCUM + a.ACIERTOS_CNT
+                 , creation_date = sysdate
 			 where gambling_type = a.gambling_type
 			   and list_id = a.list_id
 			   and id = a.id
@@ -845,29 +750,32 @@ begin
 			dbms_output.put_line(sql%rowcount||' repetidos - B6');	
 		end loop;
 		
-		--!actualizando el contador del header con el contador de aciertos mayores a 3 
-		for t in c_aciertos_4_5 (pn_list_id => pn_list_id) loop
-			if t.aciertos = 4 then
-				update olap_sys.gl_automaticas_header
-				   set acierto4_cnt = nvl(acierto4_cnt,0) + t.aciertos_cnt
-				 where sorteo_final is null
-				   and list_id = pn_list_id; 
-			end if;
-
-			if t.aciertos = 5 then
-				update olap_sys.gl_automaticas_header
-				   set acierto5_cnt = nvl(acierto5_cnt,0) + t.aciertos_cnt
-				 where sorteo_final is null
-				   and list_id = pn_list_id; 
-			end if;
-
-			if t.aciertos = 6 then
-				update olap_sys.gl_automaticas_header
-				   set acierto6_cnt = nvl(acierto6_cnt,0) + t.aciertos_cnt
-				 where sorteo_final is null
-				   and list_id = pn_list_id; 
-			end if;
-		end loop;
+        --!actualiando el header con jugadas con 4 aciertos
+        for a in c_4_aciertos loop
+            update olap_sys.gl_automaticas_header
+               set acierto4_cnt = a.aciertos_cnt
+                 , sorteo_actual = pn_drawing_id
+                 , creation_date = sysdate
+              where list_id = pn_list_id;        
+        end loop;
+        
+        --!actualiando el header con jugadas con 4 aciertos
+        for a in c_5_aciertos loop
+            update olap_sys.gl_automaticas_header
+               set acierto5_cnt = a.aciertos_cnt
+                 , sorteo_actual = pn_drawing_id
+                 , creation_date = sysdate
+              where list_id = pn_list_id;        
+        end loop;
+        
+        --!actualiando el header con jugadas con 4 aciertos
+        for a in c_6_aciertos loop
+            update olap_sys.gl_automaticas_header
+               set acierto6_cnt = a.aciertos_cnt
+                 , sorteo_actual = pn_drawing_id
+                 , creation_date = sysdate
+              where list_id = pn_list_id;        
+        end loop;   
 	end if;	
 exception
   when others then
@@ -911,8 +819,8 @@ end upd_gl_automaticas_handler;
 
 
 
-procedure upd_predicciones(pn_drawing_id		number) is
-	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_predicciones'; 
+procedure upd_predicciones_all(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_predicciones_all'; 
 	lv$prediccion_nombre		  varchar2(30);
 	cursor c_resultados(pn_drawing_id		number) is
 	with resultados_tbl as (
@@ -958,17 +866,17 @@ begin
 --DBMS_OUTPUT.PUT_LINE('-------------------------------');
 --DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
 	--!limpiando la tabla
-	update olap_sys.predicciones
-	   set match1_cnt = 0
-		 , match2_cnt = 0
-		 , match3_cnt = 0
-		 , match4_cnt = 0
-		 , match5_cnt = 0
-		 , match6_cnt = 0
+	update olap_sys.predicciones_all
+	   set match1 = 0
+		 , match2 = 0
+		 , match3 = 0
+		 , match4 = 0
+		 , match5 = 0
+		 , match6 = 0
 	 where prediccion_sorteo = pn_drawing_id;	 
 	
 	for k in c_resultados(pn_drawing_id => pn_drawing_id) loop
-		update olap_sys.predicciones
+		update olap_sys.predicciones_all
 		   set res1 = k.lt1
 		     , res2 = k.lt2
 			 , res3 = k.lt3
@@ -976,9 +884,9 @@ begin
 			 , res5 = k.lt5
 			 , res6 = k.lt6
 		 where prediccion_sorteo = pn_drawing_id
-		   and prediccion_tipo = 'Ley_del_Tercio';
-
-		update olap_sys.predicciones
+		   and prediccion_tipo = 'LT';
+		/*
+		update olap_sys.predicciones_all
 		   set res1 = k.fr1
 		     , res2 = k.fr2
 			 , res3 = k.fr3
@@ -987,13 +895,14 @@ begin
 			 , res6 = k.fr6
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Frecuencia';
-
+		*/
 		/*estos son los valores validos para esta actualizacion
 		0: Primo
 		1: Impar
 		2: Par
 		*/
-		update olap_sys.predicciones
+		/*
+		update olap_sys.predicciones_all
 		   set res1 = k.p1
 		     , res2 = k.p2
 			 , res3 = k.p3
@@ -1003,7 +912,7 @@ begin
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Primo_Impar_Par';
 
-		update olap_sys.predicciones
+		update olap_sys.predicciones_all
 		   set res1 = k.comb1
 		     , res2 = k.comb2
 			 , res3 = k.comb3
@@ -1012,7 +921,7 @@ begin
 			 , res6 = k.comb6
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Numerica';			   
-
+		*/
 		/*estos son los valores validos para esta actualizacion
 		cuando pxcN tiene valor se transforma en 1
 		cuando preN tiene valor se transforma en 2
@@ -1022,7 +931,8 @@ begin
 		1		0		4
 		1		2		5
 		*/
-		update olap_sys.predicciones
+		/*
+		update olap_sys.predicciones_all
 		   set res1 = k.pre1
 		     , res2 = k.pre2
 			 , res3 = k.pre3
@@ -1031,16 +941,17 @@ begin
 			 , res6 = k.pre6
 		 where prediccion_sorteo = pn_drawing_id
 		   and prediccion_tipo = 'Preferente';
+		*/   
 	end loop;
 
 exception
  when others then
 	DBMS_OUTPUT.PUT_LINE(SQLERRM);		 
-end upd_predicciones; 
+end upd_predicciones_all; 
 
 
-procedure evaluate_prediccion(pn_drawing_id		number) is
-LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'evaluate_prediccion'; 
+procedure evaluate_prediccion_all(pn_drawing_id		number) is
+LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'evaluate_prediccion_all'; 
 ln$match_cnt				  number:= 0;
 lf$match_pct				  float := 0.0;
 
@@ -1048,37 +959,35 @@ begin
 DBMS_OUTPUT.PUT_LINE('-------------------------------');
 DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
 
-	update olap_sys.predicciones
-	   set match_cnt = case when pre1 = '#' then 0 else case when pre1 = res1 then 1 else 0 end end
-					 + case when pre2 = '#' then 0 else case when pre2 = res2 then 1 else 0 end end
-					 + case when pre3 = '#' then 0 else case when pre3 = res3 then 1 else 0 end end
-					 + case when pre4 = '#' then 0 else case when pre4 = res4 then 1 else 0 end end
-					 + case when pre5 = '#' then 0 else case when pre5 = res5 then 1 else 0 end end
-					 + case when pre6 = '#' then 0 else case when pre6 = res6 then 1 else 0 end end
-		 , match_pct = round((match_cnt/6)*100,2)
-		 , match1_cnt = case when pre1 = '#' then 0 else case when pre1 = res1 then 1 else 0 end end
-		 , match2_cnt = case when pre2 = '#' then 0 else case when pre2 = res2 then 1 else 0 end end
-		 , match3_cnt = case when pre3 = '#' then 0 else case when pre3 = res3 then 1 else 0 end end
-		 , match4_cnt = case when pre4 = '#' then 0 else case when pre4 = res4 then 1 else 0 end end
-		 , match5_cnt = case when pre5 = '#' then 0 else case when pre5 = res5 then 1 else 0 end end
-		 , match6_cnt = case when pre6 = '#' then 0 else case when pre6 = res6 then 1 else 0 end end
+	update olap_sys.predicciones_all
+	   set match_cnt = case when pred1 = '#' then 0 else case when pred1 = res1 then 1 else 0 end end
+					 + case when pred2 = '#' then 0 else case when pred2 = res2 then 1 else 0 end end
+					 + case when pred3 = '#' then 0 else case when pred3 = res3 then 1 else 0 end end
+					 + case when pred4 = '#' then 0 else case when pred4 = res4 then 1 else 0 end end
+					 + case when pred5 = '#' then 0 else case when pred5 = res5 then 1 else 0 end end
+					 + case when pred6 = '#' then 0 else case when pred6 = res6 then 1 else 0 end end
+		 , match1 = case when pred1 = '#' then 0 else case when pred1 = res1 then 1 else 0 end end
+		 , match2 = case when pred2 = '#' then 0 else case when pred2 = res2 then 1 else 0 end end
+		 , match3 = case when pred3 = '#' then 0 else case when pred3 = res3 then 1 else 0 end end
+		 , match4 = case when pred4 = '#' then 0 else case when pred4 = res4 then 1 else 0 end end
+		 , match5 = case when pred5 = '#' then 0 else case when pred5 = res5 then 1 else 0 end end
+		 , match6 = case when pred6 = '#' then 0 else case when pred6 = res6 then 1 else 0 end end
 		 , updated_date = sysdate
 	 where prediccion_sorteo = pn_drawing_id
-	   and prediccion_tipo in ('Ley_del_Tercio','Frecuencia','Primo_Impar_Par','Preferente');
-	   
-	update olap_sys.predicciones
-	   set match_cnt = olap_sys.w_common_pkg.contar_igualdades (pre1||','||pre2||','||pre3||','||pre4||','||pre5||','||pre6
+	   and prediccion_tipo in ('LT');
+	/*   
+	update olap_sys.predicciones_all
+	   set match_cnt = olap_sys.w_common_pkg.contar_igualdades (pred1||','||pred2||','||pred3||','||pred4||','||pred5||','||pred6
 						  , res1||','||res2||','||res3||','||res4||','||res5||','||res6)
-		 , match_pct = round((match_cnt/6)*100,2)
 		 , updated_date = sysdate
 	 where prediccion_sorteo = pn_drawing_id
 	   and prediccion_tipo = 'Numerica';		 
-
+	*/
 	commit;
 exception
  when others then
 	DBMS_OUTPUT.PUT_LINE(SQLERRM);		 
-end evaluate_prediccion; 
+end evaluate_prediccion_all; 
 
 
 procedure evaluate_prediccion_handler(pn_drawing_id               	number) is
@@ -1086,10 +995,10 @@ LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'evaluate_prediccion_handler';
 begin 
 	DBMS_OUTPUT.PUT_LINE('-------------------------------');
 	DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
-	upd_predicciones(pn_drawing_id => pn_drawing_id);
+	upd_predicciones_all(pn_drawing_id => pn_drawing_id);
 
 	--!se evaluan las predicciones con el resultado del sorteo			 
-	evaluate_prediccion(pn_drawing_id => pn_drawing_id);
+	evaluate_prediccion_all(pn_drawing_id => pn_drawing_id);
 	
 exception
  when others then
@@ -1602,6 +1511,135 @@ exception
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 
 end filtrar_jugadas_handler;	
+
+--!insertar las predicciones en la nueva tabla predicciones
+procedure ins_predicciones_all(pv_nombre				varchar2
+							 , pn_sorteo				number							 
+							 , pv_tipo					varchar2
+							 , pn_sig_sorteo1           number
+							 , pv_pred1					varchar2
+							 , pf_pres1					float
+							 , pn_sig_sorteo2           number
+							 , pv_pred2					varchar2
+							 , pf_pres2					float
+							 , pn_sig_sorteo3           number
+							 , pv_pred3					varchar2
+							 , pf_pres3					float
+							 , pn_sig_sorteo4           number
+							 , pv_pred4					varchar2
+							 , pf_pres4					float
+							 , pn_sig_sorteo5           number
+							 , pv_pred5					varchar2
+							 , pf_pres5					float
+							 , pn_sig_sorteo6           number
+							 , pv_pred6					varchar2
+							 , pf_pres6					float) is
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_predicciones_all';
+begin
+	--!insertando el nuevo registro de la prediccion
+	insert into olap_sys.predicciones_all (prediccion_id,
+										   prediccion_nombre,
+										   prediccion_sorteo,
+										   prediccion_tipo,
+										   siguiente_sorteo1,
+										   pred1,
+										   pres1,
+										   siguiente_sorteo2,
+										   pred2,
+										   pres2,
+										   siguiente_sorteo3,
+										   pred3,
+										   pres3,
+										   siguiente_sorteo4,
+										   pred4,
+										   pres4,
+										   siguiente_sorteo5,
+										   pred5,
+										   pres5,
+										   siguiente_sorteo6,
+										   pred6,
+										   pres6)
+	values ((select nvl(max(prediccion_id),0)+1 from olap_sys.predicciones_all)
+	      , pv_nombre
+	      , pn_sorteo
+	      , pv_tipo
+		  , pn_sig_sorteo1
+	      , decode(pv_pred1,'1','R','2','G','3','B')
+	      , pf_pres1
+		  , pn_sig_sorteo2
+	      , decode(pv_pred2,'1','R','2','G','3','B')
+	      , pf_pres2
+		  , pn_sig_sorteo3
+	      , decode(pv_pred3,'1','R','2','G','3','B')
+	      , pf_pres3
+		  , pn_sig_sorteo4
+	      , decode(pv_pred4,'1','R','2','G','3','B')
+	      , pf_pres4
+		  , pn_sig_sorteo5
+	      , decode(pv_pred5,'1','R','2','G','3','B')
+	      , pf_pres5
+		  , pn_sig_sorteo6
+	      , decode(pv_pred6,'1','R','2','G','3','B')
+	      , pf_pres6);
+	commit;		  
+exception
+  when others then
+	rollback;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 	
+end ins_predicciones_all;
+
+--!insertar las predicciones en la nueva tabla predicciones
+procedure predicciones_all_handler(pv_nombre				varchar2
+								 , pn_sorteo				number							 
+								 , pv_tipo					varchar2
+								 , pn_sig_sorteo1           number
+								 , pv_pred1					varchar2
+								 , pf_pres1					float
+								 , pn_sig_sorteo2           number
+								 , pv_pred2					varchar2
+								 , pf_pres2					float
+								 , pn_sig_sorteo3           number
+								 , pv_pred3					varchar2
+								 , pf_pres3					float
+								 , pn_sig_sorteo4           number
+								 , pv_pred4					varchar2
+								 , pf_pres4					float
+								 , pn_sig_sorteo5           number
+								 , pv_pred5					varchar2
+								 , pf_pres5					float
+								 , pn_sig_sorteo6           number
+								 , pv_pred6					varchar2
+								 , pf_pres6					float) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'predicciones_all_handler'; 
+begin		
+	--!insertar las predicciones en la nueva tabla predicciones
+	ins_predicciones_all(pv_nombre => pv_nombre
+					   , pn_sorteo => pn_sorteo
+					   , pv_tipo   => pv_tipo
+					   , pn_sig_sorteo1 => pn_sig_sorteo1
+					   , pv_pred1  => pv_pred1
+					   , pf_pres1  => pf_pres1
+					   , pn_sig_sorteo2 => pn_sig_sorteo2
+					   , pv_pred2  => pv_pred2
+					   , pf_pres2  => pf_pres2
+					   , pn_sig_sorteo3 => pn_sig_sorteo3
+					   , pv_pred3  => pv_pred3
+					   , pf_pres3  => pf_pres3
+					   , pn_sig_sorteo4 => pn_sig_sorteo4
+					   , pv_pred4  => pv_pred4
+					   , pf_pres4  => pf_pres4
+					   , pn_sig_sorteo5 => pn_sig_sorteo5
+					   , pv_pred5  => pv_pred5
+					   , pf_pres5  => pf_pres5
+					   , pn_sig_sorteo6 => pn_sig_sorteo6
+					   , pv_pred6  => pv_pred6
+					   , pf_pres6  => pf_pres6);			   
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end predicciones_all_handler;								 
 
 end w_gl_automaticas_pkg;
 /

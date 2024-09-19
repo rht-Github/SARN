@@ -425,15 +425,23 @@ procedure get_frec_lt_count_wrapper(pn_drawing_id				   NUMBER DEFAULT NULL
 								  , x_err_code       IN OUT NOCOPY NUMBER	
 									);
 
---!proceso para buscar patrones en el historico de mapas de conteo
+--!proceso para buscar patrones en el historico de mapas de ley del tercio
 procedure search_pattern_handler(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
-							   , pn_drawing_id				    NUMBER DEFAULT 0
+							   , pn_drawing_id				    NUMBER
 							   , pv_gl_type					    VARCHAR2 DEFAULT 'LT'
-							   , pn_rownum						NUMBER DEFAULT 2
+							   , pn_rownum						NUMBER DEFAULT 1
 							   , pv_full_scan					VARCHAR2 DEFAULT 'N'
-							   , x_err_code       IN OUT NOCOPY NUMBER	
 								);
 
+--!proceso para buscar patrones en el historico de mapas de conteo
+procedure search_pattern_wrapper(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
+							   , pn_drawing_id				    NUMBER
+							   , pv_gl_type					    VARCHAR2 DEFAULT 'LT'
+							   , pn_rownum						NUMBER DEFAULT 1
+							   , pv_full_scan			        VARCHAR2 DEFAULT 'N'
+							   , x_err_code       IN OUT NOCOPY NUMBER	
+								);
+								
 --!proceso para validar la repeticion de los patrones de la ley del tercio
 procedure validate_lt_pattern_history;	
 							

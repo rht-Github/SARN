@@ -1,0 +1,10 @@
+rem purpose      : adding unique index on predicciones_all 
+rem creation_date: 18/09/2024
+
+prompt adding unique index on olap_sys.predicciones_all  
+
+create unique index olap_sys.predicciones_all_uk on olap_sys.predicciones_all ( 
+  PREDICCION_NOMBRE, PREDICCION_SORTEO, PREDICCION_TIPO   
+) tablespace olap_big_index_tbl
+/
+show errors;

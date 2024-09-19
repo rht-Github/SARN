@@ -1464,6 +1464,9 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 				
 				--!ejecuta el proceso numero_siguiente_wrapper para cada posicion del resultado
 				olap_sys.w_new_pick_panorama_pkg.numero_siguiente_handler(pn_drawing_id => i.gambling_id);			
+
+				--!proceso para buscar patrones en el historico de mapas de ley del tercio
+				olap_sys.w_NEW_pick_panorama_pkg.search_pattern_handler(pn_drawing_id => i.gambling_id);
 				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;

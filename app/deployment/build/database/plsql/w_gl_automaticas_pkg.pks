@@ -9,8 +9,8 @@ select drawing_id id
 	 , color_ubicacion fre
 	 , color_ley_tercio lt
 	 , ciclo_aparicion ca
-     , decode(pronos_ciclo,null,0,1) pxc
-     , decode(preferencia_flag,null,0,2) pref
+     , nvl(pronos_ciclo,-1) pxc
+     , nvl(preferencia_flag,'.') pref
 	 , decode(CHNG_POSICION,null,'.','C') chg 
 	 , nvl(winner_flag,'N') winner
      , case when olap_sys.w_common_pkg.is_prime_number(digit) = 1 then 0 else 
@@ -50,21 +50,6 @@ procedure aciertos_repetidos_handler(pn_drawing_id		number);
 --!evaluar las predicciones de frecuencia y ley del tercio
 procedure evaluate_prediccion_handler(pn_drawing_id               	number);
 
---!insertar las predicciones en la tabla predicciones
-procedure predicciones_handler(pv_nombre			varchar2
-							 , pn_muestra			number
-							 , pv_fecha				varchar2
-							 , pv_fecha_sorteo_min  varchar2
-							 , pv_fecha_sorteo_max	varchar2
-							 , pv_tipo				varchar2
-							 , pv_pre1				varchar2
-							 , pv_pre2				varchar2
-							 , pv_pre3				varchar2
-							 , pv_pre4				varchar2
-							 , pv_pre5				varchar2
-							 , pv_pre6				varchar2
-							 , pn_prediccion_sorteo number);
-
 --!insertar metadatos de los porcentajes de las posiciones de c1, c3, c4 y c6 en la tabla plan_jugada_details
 --!utilizar los metadatos para marcar como no optimas en la tabla de gl_automaticas_detail
 procedure porcentaje_c1_c3_c4_c6_handler(pb_insert_flag			boolean default true
@@ -75,7 +60,29 @@ procedure porcentaje_c1_c3_c4_c6_handler(pb_insert_flag			boolean default true
 --!aplicar filtros para seleccionar la franja con jugadas mas ganadoras en base a calculos hechos en Excel
 --!y marcar status = Y para las jugadas que cumplan
 procedure filtrar_jugadas_handler(pv_insert_flag   varchar2 default 'Y');
-									   
+
+--!insertar las predicciones en la nueva tabla predicciones
+procedure predicciones_all_handler(pv_nombre				varchar2
+								 , pn_sorteo				number							 
+								 , pv_tipo					varchar2
+								 , pn_sig_sorteo1           number
+								 , pv_pred1					varchar2
+								 , pf_pres1					float
+								 , pn_sig_sorteo2           number
+								 , pv_pred2					varchar2
+								 , pf_pres2					float
+								 , pn_sig_sorteo3           number
+								 , pv_pred3					varchar2
+								 , pf_pres3					float
+								 , pn_sig_sorteo4           number
+								 , pv_pred4					varchar2
+								 , pf_pres4					float
+								 , pn_sig_sorteo5           number
+								 , pv_pred5					varchar2
+								 , pf_pres5					float
+								 , pn_sig_sorteo6           number
+								 , pv_pred6					varchar2
+								 , pf_pres6					float);									   
 end w_gl_automaticas_pkg;
 /
 show errors;

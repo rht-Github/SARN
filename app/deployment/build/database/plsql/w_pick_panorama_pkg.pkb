@@ -1,4 +1,4 @@
-create or replace package body olap_sys.w_new_pick_panorama_pkg as
+create or replace package body olap_sys.w_pick_panorama_pkg as
 
 --!variables globales
    --!decenas
@@ -138,18 +138,33 @@ create or replace package body olap_sys.w_new_pick_panorama_pkg as
    ge$cant_numero_primo_invalido    exception;
    ge$cant_num_par_non_invalido	    exception;
    ge$no_numeros_primos             exception;
-   ge$numeros_listas_imcompletas	exception;  
-
-	--!contantes
-	gf$percentile           float  := 0.5;
-	gv$pr_pa_in_c1_c6		varchar2(15) := 'PR_PA_IN_C1_C6';
-	gv$centros_c3_c4		varchar2(15) := 'CENTROS_C3_C4';
-	
-	--!constantes para los procesos de mapa de numeros primos
-	gf$mapa_percentile_rcnt			float  := 0.4;
-	gf$mapa_perc_dif_ini			float  := 0.15;
-	gf$mapa_perc_dif_end			float  := 0.7;
-	
+   ge$numeros_listas_imcompletas	exception;
+   
+   --!valores constantes del proceso
+   CV$NUMERO_PRIMO         constant varchar2(3) := 'PR';
+   CV$NUMERO_PAR           constant varchar2(3) := 'PAR';
+   CV$NUMERO_NON           constant varchar2(3) := 'NON';  
+   CV$NUMERO_COMODIN       constant varchar2(3) := '%';
+   CV$SIN_VALOR            constant varchar2(5) := '1=1';   
+   CN$MULTIPLO_3           constant number(1) := 3;
+   CN$MULTIPLO_4           constant number(1) := 4;
+   CN$MULTIPLO_5           constant number(1) := 5;
+   CN$MULTIPLO_7           constant number(1) := 7;
+   CV$ENABLE               constant varchar2(1) := 'Y';  
+   CV$DISABLE              constant varchar2(1) := 'N';  
+   CV$PRINT_ONLY           constant varchar2(1) := 'P';
+   CN$DECENAS_TODAS		   constant number(1) := 0;	
+   CV$PANORAMA			   constant varchar2(1) := 'P';	
+   CV$MAPAS_LT			   constant varchar2(1) := 'M';	   
+   CN$MIN_GL_DRAWING_ID	   constant number := 594;
+   CN$DOS_NUMEROS_PRIMOS   constant number := 2;
+   CN$HOLGURA_GL_CA        constant number := 2;
+   CV$GL_NULL			   constant varchar2(1) := 'X';	   
+   CV$STATUS_ACTIVO        constant varchar2(1) := 'A';
+   CV$STATUS_ERROR         constant varchar2(1) := 'E';   
+   CN$DIFERENCIA		   constant number(3) := 99;
+   CN$BASE_DRAWING_ID      constant number(3) := 595;
+   
    --!cursor global para recuperar la configuracion de numero primo, par y non
    cursor c_conf_ppn (pv_drawing_type              VARCHAR2
 				    , pn_drawing_case              NUMBER) is
@@ -166,7 +181,7 @@ create or replace package body olap_sys.w_new_pick_panorama_pkg as
 	  FROM OLAP_SYS.PLAN_JUGADAS
 	 WHERE DRAWING_TYPE = pv_drawing_type
 	   AND DESCRIPTION  = 'CONFIG_PRIMOS_PARES_NONES'
-	   AND STATUS       = CV$STATUS_ACTIVO
+	   AND STATUS       = 'A'
 	   AND DRAWING_CASE = pn_drawing_case
 	 ORDER BY SORT_EXECUTION;
 
@@ -187,62 +202,7 @@ create or replace package body olap_sys.w_new_pick_panorama_pkg as
 	   AND STATUS         = 'A'
 	   AND PLAN_JUGADA_ID = pn_plan_jugada
 	 ORDER BY SORT_EXECUTION; */
-
-
-	--!cursor para recuperar los rangos de la decena por posicion
-	cursor c_decena_rango (pv_drawing_type             VARCHAR2
-					     , pn_drawing_case             NUMBER) is
-	select id
-	     , to_number(substr(pos1,1,instr(pos1,'-',1,1)-1)) pos11
-		 , to_number(substr(pos1,instr(pos1,'-',1,1)+1)) pos12
-		 , to_number(substr(pos2,1,instr(pos2,'-',1,1)-1)) pos21
-		 , to_number(substr(pos2,instr(pos2,'-',1,1)+1)) pos22
-		 , to_number(substr(pos3,1,instr(pos3,'-',1,1)-1)) pos31
-		 , to_number(substr(pos3,instr(pos3,'-',1,1)+1)) pos32
-		 , to_number(substr(pos4,1,instr(pos4,'-',1,1)-1)) pos41
-		 , to_number(substr(pos4,instr(pos4,'-',1,1)+1)) pos42
-		 , to_number(substr(pos5,1,instr(pos5,'-',1,1)-1)) pos51
-		 , to_number(substr(pos5,instr(pos5,'-',1,1)+1)) pos52
-		 , to_number(substr(pos6,1,instr(pos6,'-',1,1)-1)) pos61
-		 , to_number(substr(pos6,instr(pos6,'-',1,1)+1)) pos62
-	  from olap_sys.plan_jugadas
-	 where drawing_type = pv_drawing_type
-	   and description  = 'DECENAS'
-	   and status       = CV$STATUS_ACTIVO
-	   and drawing_case = nvl(pn_drawing_case,drawing_case);   
-
-
-  --!cursor para recuperar la configuracion de la lt basado en plan_jugadas
-  --!cualquier cambio en este cursor debera aplicarse en el cursor c_lt_pattern_master_p3
-  cursor c_lt_pattern_master (pn_drawing_case		number
-							, pv_description        varchar2) is
-	select distinct jd.pos1
-	     , jd.pos2
-	     , jd.pos3
-	     , jd.pos4
-	     , jd.pos5
-	     , jd.pos6 
-	     , (select pj2.pos1 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_ini 
-	     , (select pj2.pos2 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_end
-	     , (select pj2.pos3 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_ini
-	     , (select pj2.pos4 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_end
-		 , nvl(jd.pos1,'#') pos1_str
-	     , nvl(jd.pos2,'#') pos2_str
-	     , nvl(jd.pos3,'#') pos3_str
-	     , nvl(jd.pos4,'#') pos4_str
-	     , nvl(jd.pos5,'#') pos5_str
-	     , nvl(jd.pos6,'#') pos6_str
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = CV$STATUS_ACTIVO
-	   and pj.status = CV$STATUS_ACTIVO
-	   and jd.description = pv_description
-	   and pj.drawing_case= pn_drawing_case
-	 order by jd.pos1 nulls last
-	     , jd.pos6 nulls last;   
-		 
+	 
 --!proceso usado para insertar valores para hacer debug
 procedure ins_tmp_testing (pv_valor		VARCHAR2) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_tmp_testing';
@@ -265,7 +225,7 @@ begin
 exception
 	when others then
 		dbms_output.put_line(LV$PROCEDURE_NAME||' '||sqlerrm);
-end ins_tmp_testing;
+end;
 
 
 procedure initialize_global_variables is
@@ -433,7 +393,7 @@ end par_inpar_contador;
 
 							
 --!recuperar el ID ultimo sorteo
-function get_max_drawing_id (pv_drawing_type             VARCHAR2 DEFAULT 'mrtr') return number is
+function get_max_drawing_id (pv_drawing_type             VARCHAR2) return number is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'get_max_drawing_id';
 begin
    if GB$SHOW_PROC_NAME then
@@ -716,7 +676,6 @@ end run_gl_query_rules;
 procedure upd_s_templates_error (pn_process_id			  NUMBER
 						       , pn_seq_no				  NUMBER
 						       , pv_validation_message	  VARCHAR2
-                               , pv_type                  VARCHAR2
 						        ) is 
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_s_templates_error';
 
@@ -724,32 +683,13 @@ begin
 	update olap_sys.s_template_hdr
 	   set error_cnt = error_cnt + 1
 	 where process_id = pn_process_id;
-	
-	olap_sys.w_common_pkg.g_dml_stmt := 'update olap_sys.s_template_outputs';
-    if pv_type = CV$VAL_DIFERENCIA_TIPO then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_dif_tipo = '||chr(39)||CV$STATUS_ERROR||chr(39);
-	elsif pv_type = CV$VAL_POSICION_PRIMOS then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_primos = '||chr(39)||CV$STATUS_ERROR||chr(39);
-	elsif pv_type = CV$VAL_SUMA_CICLO_APARICION then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_ca = '||chr(39)||CV$STATUS_ERROR||chr(39);
-	elsif pv_type = CV$VAL_SUMA_DIGITOS then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_suma_digitos = '||chr(39)||CV$STATUS_ERROR||chr(39);
-	elsif pv_type = CV$VAL_DISTANCIA_EXTREMOS then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_extremos = '||chr(39)||CV$STATUS_ERROR||chr(39);
-	elsif pv_type = CV$VAL_POSICION_SIN_CAMBIO then 
-        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' set status_sin_cambio = '||chr(39)||CV$STATUS_ERROR||chr(39);
-    end if;    
---    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||', validation_message = validation_message'||'||'||' '||chr(39)||pv_validation_message||chr(39)||'||'||chr(39)||'|'||chr(39);
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||', validation_message = '||chr(39)||pv_validation_message||chr(39);
-	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where process_id = :pn_process_id';
-	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' and seq_no = :pn_seq_no';
+	 
+	update olap_sys.s_template_outputs
+	   set status = CV$STATUS_ERROR
+	     , validation_message = validation_message||' '||pv_validation_message||'|'
+	 where process_id = pn_process_id
+	   and seq_no = pn_seq_no;
 
-    execute immediate olap_sys.w_common_pkg.g_dml_stmt using pn_process_id, pn_seq_no;
-  
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;
 end upd_s_templates_error;
 
 --!proceso para validar que el par de numeros primos corresponda a la diferencia tipo
@@ -811,8 +751,8 @@ begin
 			end loop;		
 		end if;
 
---		dbms_output.put_line('ln$primo_ini: '||ln$primo_ini);
---		dbms_output.put_line('ln$primo_end: '||ln$primo_end);
+		dbms_output.put_line('ln$primo_ini: '||ln$primo_ini);
+		dbms_output.put_line('ln$primo_end: '||ln$primo_end);
 
 		--!inicializando variable de salida
 		olap_sys.w_common_pkg.g_data_found := -1;
@@ -827,14 +767,13 @@ begin
 			   and primo_ini = ln$primo_ini
 			   and primo_fin = ln$primo_end;  	
 
---dbms_output.put_line('diferencia < 0 g_data_found: '||olap_sys.w_common_pkg.g_data_found);
+dbms_output.put_line('diferencia < 0 g_data_found: '||olap_sys.w_common_pkg.g_data_found);
 			if 	olap_sys.w_common_pkg.g_data_found = 0 then
---dbms_output.put_line('upd_s_templates_error');			
+dbms_output.put_line('upd_s_templates_error');			
 				--!proceso para actualizar contadores, estados y mensajes en los templates
 				upd_s_templates_error (pn_process_id		 => pn_process_id
 									 , pn_seq_no			 => pn_seq_no
-									 , pv_validation_message => CV$VAL_DIFERENCIA_TIPO 
-                                     , pv_type               => CV$VAL_DIFERENCIA_TIPO );			   
+									 , pv_validation_message => LV$PROCEDURE_NAME);			   
 			end if;	
 
 		end if;
@@ -853,21 +792,16 @@ begin
 			   and primo_ini = ln$primo_ini
 			   and primo_fin = ln$primo_end; 			
 
---dbms_output.put_line('diferencia > 0 g_data_found: '||olap_sys.w_common_pkg.g_data_found);
+dbms_output.put_line('diferencia > 0 g_data_found: '||olap_sys.w_common_pkg.g_data_found);
 			if 	olap_sys.w_common_pkg.g_data_found = 0 then
---dbms_output.put_line('upd_s_templates_error');			
+dbms_output.put_line('upd_s_templates_error');			
 				--!proceso para actualizar contadores, estados y mensajes en los templates
 				upd_s_templates_error (pn_process_id		 => pn_process_id
 									 , pn_seq_no			 => pn_seq_no
-									 , pv_validation_message => CV$VAL_DIFERENCIA_TIPO 
-                                     , pv_type               => CV$VAL_DIFERENCIA_TIPO );				   
+									 , pv_validation_message => LV$PROCEDURE_NAME);			   
 			end if;	
 		end if;
 	end if;
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;
 end validate_diferencia_tipo;
 
 --!procedimiento para recuperar info de GL
@@ -1022,17 +956,12 @@ procedure ins_s_template_outputs(pn_process_id			 NUMBER
 							   , pn_pos6				 NUMBER
 							   , pv_drawing_type		 VARCHAR2					  
 							   , pn_drawing_id		     NUMBER
---							   , pv_validation_message	 VARCHAR2 DEFAULT NULL
---							   , pv_status_suma_digitos  VARCHAR2 DEFAULT NULL 
-							   , pn_consecutivo_index    NUMBER DEFAULT 0
-							   , pv_get_gl_info			 BOOLEAN DEFAULT TRUE	
 							   , xn_seq_no IN OUT NOCOPY NUMBER
 							    ) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_s_template_outputs';
 	lv$drawing_ready				varchar2(50);
 	ln$inpar_cnt					number := 0;
 	ln$par_cnt						number := 0;
-	ln$primo_cnt					number := 0;
 	ln$pos_sum					    number := 0;
 	ln$gl_ca_pos1					number := 0;
 	ln$gl_ca_pos2					number := 0;
@@ -1068,51 +997,42 @@ begin
     ln$inpar_cnt := par_inpar_contador (pv_drawing_ready => lv$drawing_ready, pv_digit_type => 'INPAR');
 	ln$par_cnt	 := par_inpar_contador (pv_drawing_ready => lv$drawing_ready, pv_digit_type => 'PAR');
 	ln$pos_sum   := pn_pos1 + pn_pos2 + pn_pos3 + pn_pos4 + pn_pos5 + pn_pos6;
-    ln$primo_cnt := olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos1) 
-	              + olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos2) 
-				  + olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos3) 
-				  + olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos4) 
-				  + olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos5) 
-				  + olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos6); 
+
 
 	--!procedimiento para recuperar info de GL
-	if pv_get_gl_info then 
-		get_gl_info_handler(pv_drawing_type	  => pv_drawing_type
-						  , pn_drawing_id     => pn_drawing_id
-						  , pn_b1_digit		  => pn_pos1
-						  , pn_b2_digit		  => pn_pos2
-						  , pn_b3_digit		  => pn_pos3
-						  , pn_b4_digit		  => pn_pos4
-						  , pn_b5_digit		  => pn_pos5
-						  , pn_b6_digit		  => pn_pos6							
-						  , xn_gl_ca_pos1     => ln$gl_ca_pos1
-						  , xn_gl_ca_pos2     => ln$gl_ca_pos2
-						  , xn_gl_ca_pos3     => ln$gl_ca_pos3
-						  , xn_gl_ca_pos4     => ln$gl_ca_pos4
-						  , xn_gl_ca_pos5     => ln$gl_ca_pos5
-						  , xn_gl_ca_pos6     => ln$gl_ca_pos6
-						  , xv_change_pos1    => lv$change_pos1
-						  , xv_change_pos2    => lv$change_pos2
-						  , xv_change_pos3    => lv$change_pos3
-						  , xv_change_pos4    => lv$change_pos4
-						  , xv_change_pos5    => lv$change_pos5
-						  , xv_change_pos6    => lv$change_pos6
-						  , xv_favorable_pos1 => lv$favorable_pos1
-						  , xv_favorable_pos2 => lv$favorable_pos2
-						  , xv_favorable_pos3 => lv$favorable_pos3
-						  , xv_favorable_pos4 => lv$favorable_pos4
-						  , xv_favorable_pos5 => lv$favorable_pos5
-						  , xv_favorable_pos6 => lv$favorable_pos6
-						  , x_err_code        => ln$err_code
-						   );
+	get_gl_info_handler(pv_drawing_type	  => pv_drawing_type
+					  , pn_drawing_id     => pn_drawing_id
+					  , pn_b1_digit		  => pn_pos1
+					  , pn_b2_digit		  => pn_pos2
+					  , pn_b3_digit		  => pn_pos3
+					  , pn_b4_digit		  => pn_pos4
+					  , pn_b5_digit		  => pn_pos5
+					  , pn_b6_digit		  => pn_pos6							
+					  , xn_gl_ca_pos1     => ln$gl_ca_pos1
+					  , xn_gl_ca_pos2     => ln$gl_ca_pos2
+					  , xn_gl_ca_pos3     => ln$gl_ca_pos3
+					  , xn_gl_ca_pos4     => ln$gl_ca_pos4
+					  , xn_gl_ca_pos5     => ln$gl_ca_pos5
+					  , xn_gl_ca_pos6     => ln$gl_ca_pos6
+					  , xv_change_pos1    => lv$change_pos1
+					  , xv_change_pos2    => lv$change_pos2
+					  , xv_change_pos3    => lv$change_pos3
+					  , xv_change_pos4    => lv$change_pos4
+					  , xv_change_pos5    => lv$change_pos5
+					  , xv_change_pos6    => lv$change_pos6
+					  , xv_favorable_pos1 => lv$favorable_pos1
+					  , xv_favorable_pos2 => lv$favorable_pos2
+					  , xv_favorable_pos3 => lv$favorable_pos3
+					  , xv_favorable_pos4 => lv$favorable_pos4
+					  , xv_favorable_pos5 => lv$favorable_pos5
+					  , xv_favorable_pos6 => lv$favorable_pos6
+					  , x_err_code        => ln$err_code
+					   );
 
+	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 		--!funcion que regresa la sum del gl ciclo de aparicion de un jugada
 		ln$gl_ca_sum := ln$gl_ca_pos1 + ln$gl_ca_pos2 + ln$gl_ca_pos3 + ln$gl_ca_pos4 + ln$gl_ca_pos5 + ln$gl_ca_pos6;
-    else
-		ln$err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
-	end if;
-	
-	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then				
+				
 		insert into olap_sys.s_template_outputs (process_id
 											   , seq_no
 											   , pos1
@@ -1123,7 +1043,6 @@ begin
 											   , pos6
 											   , inpar_cnt
 											   , par_cnt
-											   , primo_cnt
 											   , pos_sum
 											   , gl_ca_pos1
 											   , gl_ca_pos2
@@ -1144,10 +1063,7 @@ begin
 											   , favorable_pos4
 											   , favorable_pos5
 											   , favorable_pos6
-											   , consecutivo_index
 											   , status
-											   --, status_suma_digitos
-											   --, validation_message
 											   , created_by
 											   , creation_date)
 		values (pn_process_id
@@ -1160,7 +1076,6 @@ begin
 			  , pn_pos6
 			  , ln$inpar_cnt
 			  , ln$par_cnt
-			  , ln$primo_cnt
 			  , ln$pos_sum
 			  , ln$gl_ca_pos1
 			  , ln$gl_ca_pos2
@@ -1181,10 +1096,7 @@ begin
 			  , lv$favorable_pos4
 			  , lv$favorable_pos5
 			  , lv$favorable_pos6
-			  , pn_consecutivo_index
-			  , 0
-			  --, pv_status_suma_digitos
-			  --, pv_validation_message
+			  , CV$STATUS_ACTIVO
 			  , user
 			  , sysdate) returning seq_no into xn_seq_no;
 		
@@ -1217,8 +1129,6 @@ procedure run_panorama_query_rules(pv_drawing_type					  VARCHAR2
 								 , pv_digit_list_pos5 		 	      VARCHAR2
 								 , pv_digit_list_pos6 		 	      VARCHAR2
 								 , pn_process_id					  NUMBER
-								 , pv_in_extremos_list  			  VARCHAR2
-								 , pn_consecutivos_cnt				  NUMBER
 								 , x_err_code      		IN OUT NOCOPY NUMBER
 								  ) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'run_panorama_query_rules';
@@ -1232,22 +1142,14 @@ begin
 		dbms_output.put_line(LV$PROCEDURE_NAME);
 		dbms_output.put_line('pv_qry_stmt.len: '||length(pv_qry_stmt));
 		dbms_output.put_line('pv_save_qry_enable: '||pv_save_qry_enable);
-        dbms_output.put_line('pn_term_cnt: '||pn_term_cnt);
-        dbms_output.put_line('pv_digit_list_pos1: '||pv_digit_list_pos1);
-        dbms_output.put_line('pv_digit_list_pos2: '||pv_digit_list_pos2);
-        dbms_output.put_line('pv_digit_list_pos3: '||pv_digit_list_pos3);
-        dbms_output.put_line('pv_digit_list_pos4: '||pv_digit_list_pos4);
-        dbms_output.put_line('pv_digit_list_pos5: '||pv_digit_list_pos5);
-        dbms_output.put_line('pv_digit_list_pos6: '||pv_digit_list_pos6);
    end if;
-
+    
 	--!multiples terminaciones
 	if pn_term_cnt = 1 then
 		lv$qry_stmt := replace(pv_qry_stmt,'<1>','(T1_CNT = '||pn_term_cnt||' or '||'T2_CNT = '||pn_term_cnt||')');
 	elsif pn_term_cnt = 2 then
 		lv$qry_stmt := replace(pv_qry_stmt,'<1>','T2_CNT = '||pn_term_cnt);
 	end if;
- --ins_tmp_testing (pv_valor => lv$qry_stmt||'  2');  
 	
 	--!pos1
 	lv$qry_stmt := replace(lv$qry_stmt,'<2>',pv_digit_list_pos1);
@@ -1266,18 +1168,8 @@ begin
 
 	--!pos6
 	lv$qry_stmt := replace(lv$qry_stmt,'<7>',pv_digit_list_pos6);
-
-/* Esta validacion ya se aplico en la tabla olap_sys.w_combination_responses_fs	
-	--!agregando IN con la lista de diferencias de extremos
-	lv$qry_stmt := lv$qry_stmt ||pv_in_extremos_list; 
-*/	
-	--!agregando condicion para filtrar jugadas con consecutivos
-	lv$qry_stmt := lv$qry_stmt ||' AND CO_CNT = '||pn_consecutivos_cnt; 
-
-	--!agregando pn_drawing_case para filtrar jugadas
-	lv$qry_stmt := lv$qry_stmt ||' AND DRAWING_CASE = '||pn_drawing_case; 
 	
-	ins_tmp_testing (pv_valor => lv$qry_stmt);  
+	ins_tmp_testing (pv_valor => lv$qry_stmt); 
 	
 	begin
 		--!limpiando arreglo
@@ -1772,53 +1664,6 @@ exception
     raise;   
 end get_plan_jugada_decenas;	
 
-
---!proceso para formar un IN con las lista de diferencia de extremos
-procedure get_pm_diferencia_extremos(pv_drawing_type        	          VARCHAR2
-						           , pn_drawing_case                  	  NUMBER
-								   , xv_in_extremos_list	IN OUT NOCOPY VARCHAR2								
-						           , x_err_code    			IN OUT NOCOPY NUMBER
-						           ) is
-							
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'get_pm_diferencia_extremos';
-	cursor c_diferencia_extremos (pv_drawing_type        	      VARCHAR2
-						        , pn_drawing_case              	  NUMBER) is
-	SELECT POS1
-	  FROM OLAP_SYS.PLAN_JUGADAS
-	 WHERE DRAWING_TYPE = pv_drawing_type
-	   AND DESCRIPTION  = 'PM_DIFERENCIA_EXTREMOS'
-	   AND STATUS       = CV$STATUS_ACTIVO
-	   AND DRAWING_CASE = pn_drawing_case
-	 ORDER BY POS1; 	
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('--------------------------------');
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-		dbms_output.put_line('pv_drawing_type: '||pv_drawing_type);
-		dbms_output.put_line('pn_drawing_case: '||pn_drawing_case);
-	end if;
-	
-	olap_sys.w_common_pkg.g_data_found := 0;
-	xv_in_extremos_list := ' AND (COMB6 - COMB1 - 1) IN (';
-	for p in c_diferencia_extremos (pv_drawing_type => pv_drawing_type
-						          , pn_drawing_case => pn_drawing_case) loop
-		xv_in_extremos_list := xv_in_extremos_list || p.pos1||',';
-		olap_sys.w_common_pkg.g_data_found := 1;	
-	end loop;							  
-	--!reemplazando ultima como por parentesis derecho
-	xv_in_extremos_list := substr(xv_in_extremos_list,1,length(xv_in_extremos_list)-1)||')';
-	
-	if olap_sys.w_common_pkg.g_data_found = 0 then
-		xv_in_extremos_list := ' AND '||CV$SIN_VALOR;
-	end if;
---	dbms_output.put_line('xv_in_extremos_list: '||xv_in_extremos_list);
-	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	   
-exception
-  when others then
-    x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;   
-end get_pm_diferencia_extremos;
 
 --!proceso para obtener rango del ciclo de aparicion del plan de jugadas
 procedure get_plan_jugada_ca(pv_drawing_type                  VARCHAR2
@@ -7343,9 +7188,6 @@ procedure get_lista_digitos_por_posicion (pv_drawing_type           		VARCHAR2
 										, pv_numero_primo_list				VARCHAR2
 										, pv_add_primo_enable				VARCHAR2
 										, pv_chng_posicion_pos				VARCHAR2
-										, pv_favorable_flag					VARCHAR2
-										, pv_change_flag					VARCHAR2
-										, pv_pxc_flag						VARCHAR2
 										, xtbl_qry_output    IN OUT NOCOPY 	gt$gl_tbl 
 										, x_err_code    	 IN OUT NOCOPY 	NUMBER
 										 ) is
@@ -7364,8 +7206,6 @@ begin
 		dbms_output.put_line('pv_decena: '||pv_decena);
 		dbms_output.put_line('pv_next_decena: '||pv_next_decena);
 		dbms_output.put_line('pv_numero_primo_list: '||pv_numero_primo_list);
-		dbms_output.put_line('pv_favorable_flag: '||pv_favorable_flag);
-		dbms_output.put_line('pv_change_flag: '||pv_change_flag);		
    end if;
 
 	--!inicializando las variables para formar el query
@@ -7401,29 +7241,21 @@ begin
 	--!reemplazando ciclo aparicion
 	lv$qry_where_stmt := REPLACE(lv$qry_where_stmt,'<CICLO_APARICION>', pv_ca);
 
-	lv$qry_where_stmt := replace(lv$qry_where_stmt,'<NUMERO_PRIMO>',CV$SIN_VALOR);
-	lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PAR_NON>', CV$SIN_VALOR);
-	
-	--!reemplazo de bandera de numeros favorables
-	if pv_favorable_flag is null then
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<FAVORABLE>', CV$SIN_VALOR);	
-	else
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<FAVORABLE>', 'PREFERENCIA_FLAG IS NOT NULL');	
-    end if;	
-
-	--!reemplazo de bandera de numeros favorables
-	if pv_change_flag = CV$POSICION_SIN_CAMBIO then
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<CHANGE_POS>', 'CHNG_POSICION IS NULL');	
-	else
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<CHANGE_POS>', CV$SIN_VALOR);	
-    end if;		
-
-	--!reemplazo de bandera de pronosticos por ciclo
-	if pv_pxc_flag is null then
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PXC>', 'PRONOS_CICLO IS NULL');	
-	else
-		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PXC>', CV$SIN_VALOR);	
-    end if;	
+	--!reemplazando valores para numeros primos
+	if instr(pv_conf_ppn,CV$NUMERO_PRIMO) > 0 then 
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<NUMERO_PRIMO>','PRIME_NUMBER_FLAG = 1');
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PAR_NON>', CV$SIN_VALOR);		
+	--!reemplazando valores para numeros pares y nones
+	elsif instr(pv_conf_ppn,CV$NUMERO_PAR) > 0 then
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<NUMERO_PRIMO>','PRIME_NUMBER_FLAG = 0');
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PAR_NON>','INPAR_NUMBER_FLAG = 0');		
+	elsif instr(pv_conf_ppn,CV$NUMERO_NON) > 0 then
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<NUMERO_PRIMO>','PRIME_NUMBER_FLAG = 0');
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PAR_NON>','INPAR_NUMBER_FLAG = 1');		
+	elsif instr(pv_conf_ppn,CV$NUMERO_COMODIN) > 0 then
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<NUMERO_PRIMO>','PRIME_NUMBER_FLAG = 0');
+		lv$qry_where_stmt := replace(lv$qry_where_stmt,'<PAR_NON>', CV$SIN_VALOR);		
+	end if;
 	
 	--!uniendo las piezas para formar el query de gl
 	olap_sys.w_common_pkg.g_dml_stmt := pv_qry_stmt||' '||lv$qry_where_stmt||' '||pv_qry_order_stmt;
@@ -7437,7 +7269,18 @@ begin
 					  );
 
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
-		if pv_next_decena is not null then			
+		if pv_next_decena is not null then
+			if pv_add_primo_enable = CV$ENABLE then
+				--!agregar numeros primos en cada posicion en base a la decena
+				set_numero_primo_decena (pv_decena			  => pv_decena
+									   , pv_numero_primo_list => pv_numero_primo_list 
+									   , xtbl_qry_output      => xtbl_qry_output
+									   , x_err_code        	  => x_err_code
+										);
+			else
+				x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
+			end if;
+			
 			if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 				--!si las decenas continuas son iguales y el digito de la 1a decena es 9 regresa false
 				--!de lo contrario regresa true y el numero se agrega a la lista de numeros
@@ -7448,6 +7291,10 @@ begin
 											);
 			end if;							
 		end if;						
+	
+
+		
+	
 	end if;		
 	
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
@@ -7463,447 +7310,101 @@ exception
     raise;   
 end get_lista_digitos_por_posicion;	
 
---!valida la posicion de los numeros primos en base a metadata en tabla plan_jugadas
-procedure valida_posicion_primos(pv_drawing_type			  VARCHAR2
-							   , pn_drawing_case			  NUMBER
-							   , pn_pos1					  NUMBER
-							   , pn_pos2					  NUMBER
-							   , pn_pos3			          NUMBER
-							   , pn_pos4			          NUMBER
-							   , pn_pos5			          NUMBER
-							   , pn_pos6			          NUMBER
-							   , xv_primo_flag	IN OUT NOCOPY VARCHAR2
-							   , xv_pr1		IN OUT NOCOPY VARCHAR2
-						       , xv_pr2		IN OUT NOCOPY VARCHAR2							  
-							   , xv_pr3		IN OUT NOCOPY VARCHAR2
-							   , xv_pr4		IN OUT NOCOPY VARCHAR2
-							   , xv_pr5		IN OUT NOCOPY VARCHAR2
-							   , xv_pr6		IN OUT NOCOPY VARCHAR2) is
-
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'valida_posicion_primos';
-	ln$primos_sum				   number :=0;	
+/*
+--!proceso principal que aplicara validaciones adicionales a las jugadas finales
+procedure valida_plan_jugadas_sums (x_err_code     IN OUT NOCOPY NUMBER) is
+  LV$PROCEDURE_NAME       constant varchar2(30) := 'valida_plan_jugadas_sums';
+	ln$comb_sum					   number :=0;	
+	
+	cursor c_sums is
+	select drawing_id
+		 , drawing_case
+		 , record_id
+		 , seq_no
+		 , drawing_ready
+	  from olap_sys.jugadas_listas
+	  for update;
+	  
+	--!funcion para validar si la suma de la combinacion esta marcada como play_flag = Y
+	function is_sum_play_flag (pn_drawing_case		NUMBER
+							 , pn_xsum				NUMBER)  return boolean is
+	begin
+		olap_sys.w_common_pkg.g_rowcnt := 0;
+		select count(1) cnt
+		  into olap_sys.w_common_pkg.g_rowcnt
+		  from olap_sys.plan_jugadas_sums
+		 where play_flag 	= 'Y'
+		   and drawing_case = pn_drawing_case
+		   and xsum 		= pn_xsum;
+		
+		if olap_sys.w_common_pkg.g_rowcnt = 0 then
+			return false;
+		else
+			return true;
+		end if;	
+	end is_sum_play_flag; 	
 begin
-	if GB$SHOW_PROC_NAME then
+   if GB$SHOW_PROC_NAME then
 		dbms_output.put_line('--------------------------------');
 		dbms_output.put_line(LV$PROCEDURE_NAME);
-		dbms_output.put_line('pn_pos1: '||pn_pos1);
-		dbms_output.put_line('pn_pos2: '||pn_pos2);
-		dbms_output.put_line('pn_pos3: '||pn_pos3);
-		dbms_output.put_line('pn_pos4: '||pn_pos4);
-		dbms_output.put_line('pn_pos5: '||pn_pos5);
-		dbms_output.put_line('pn_pos6: '||pn_pos6);
-	end if;	
-	--!inicializando valores de salida
-	xv_pr1 := null;
-	xv_pr2 := null;
-	xv_pr3 := null;
-	xv_pr4 := null;
-	xv_pr5 := null;
-	xv_pr6 := null;
-	xv_primo_flag := CV$STATUS_ERROR;
-	ln$primos_sum := 0;	
-	for ppn in c_conf_ppn (pv_drawing_type => pv_drawing_type
-				        , pn_drawing_case => pn_drawing_case) loop
+   end if;		
+	
+	for z in c_sums loop
+		--!limpiando el arreglo
+		gtbl$row_source.delete;
+		
+		--!convertir un string separado por comas en renglones de un query
+		olap_sys.w_common_pkg.translate_string_to_rows (pv_string  => z.drawing_ready
+													  , xtbl_row   => gtbl$row_source 
+													  , x_err_code => x_err_code
+													   );
+		
+		if gtbl$row_source.count > 0 then
+			ln$comb_sum := 0;
+			--!calculando la sumatoria de la combinacion
+			for t in gtbl$row_source.first..gtbl$row_source.last loop
+				ln$comb_sum := ln$comb_sum + to_number(gtbl$row_source(t));
+			end loop;	
+		end if;	
+
+
 		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line('<<<   POS1: '||lpad(ppn.pos1,2,' ')||'   POS2: '||lpad(ppn.pos2,2,' ')||'   POS3: '||lpad(ppn.pos3,2,' ')||'   POS4: '||lpad(ppn.pos4,2,' ')||'   POS5: '||lpad(ppn.pos5,2,' ')||'   POS6: '||lpad(ppn.pos6,2,' ')||'   >>>');										
-		end if;
-		if ppn.POS1 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos1) = 1 then 
-				xv_pr1 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then
-					dbms_output.put_line('xv_pr1: '||xv_pr1||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
-		end if;
-		if ppn.POS2 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos2) = 1 then 
-				xv_pr2 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then
-					dbms_output.put_line('xv_pr2: '||xv_pr2||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
+			dbms_output.put_line('data: '||z.drawing_id||'-'||z.drawing_case||'-'||z.record_id||'-'||z.seq_no||'-'||z.drawing_ready||' => '||ln$comb_sum);
 		end if;	
-		if ppn.POS3 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos3) = 1 then 
-				xv_pr3 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then	
-					dbms_output.put_line('xv_pr3: '||xv_pr3||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
-		end if;	
-		if ppn.POS4 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos4) = 1 then 
-				xv_pr4 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then
-					dbms_output.put_line('xv_pr4: '||xv_pr4||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
-		end if;	
-		if ppn.POS5 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos5) = 1 then 
-				xv_pr5 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then
-					dbms_output.put_line('xv_pr5: '||xv_pr5||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
-		end if;
-		if ppn.POS6 = CV$NUMERO_PRIMO then
-			if olap_sys.w_common_pkg.is_prime_number (pn_digit => pn_pos6) = 1 then 
-				xv_pr6 := CV$NUMERO_PRIMO;
-				ln$primos_sum := ln$primos_sum + 1;
-				if GB$SHOW_PROC_NAME then
-					dbms_output.put_line('xv_pr6: '||xv_pr6||',  ln$primos_sum: '||ln$primos_sum);
-				end if;	
-			end if;	
-		end if;
+			
 
-		if ln$primos_sum = 2 then
-			xv_primo_flag := CV$STATUS_ACTIVO; 
-			exit;	
-		else
-			ln$primos_sum := 0;	
-		end if;	
 	end loop;
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('xv_primo_flag: '||xv_primo_flag);
-	end if;	
+
+	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;   
-end valida_posicion_primos;
-
-
---!funciona valida si la jugada contiene alguno de los patrones de tres numeros
---!FUNCION OBSOLETA
-function is_plan_jugada_tres(pv_drawing_type		VARCHAR2
-						   , pn_drawing_case		NUMBER
-						   , pn_pos1 				NUMBER
-						   , pn_pos2 				NUMBER
-						   , pn_pos3 				NUMBER
-						   , pn_pos4 				NUMBER
-						   , pn_pos5 				NUMBER
-						   , pn_pos6 				NUMBER) return boolean is
-	LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'is_plan_jugada_tres';
-	ln$match_cnt				number := 0;
-
-  --!cursor para recuperar la configuracion de la lt basado en plan_jugadas
-  --!cualquier cambio en este cursor debera aplicarse en el cursor c_lt_pattern_master
-  cursor c_lt_pattern_master_p3 (pn_drawing_case		number
-							   , pv_description        varchar2) is
-	select distinct jd.pos1
-	     , jd.pos2
-	     , jd.pos3
-	     , jd.pos4
-	     , jd.pos5
-	     , jd.pos6 
-	     , (select pj2.pos1 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_ini 
-	     , (select pj2.pos2 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_end
-	     , (select pj2.pos3 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_ini
-	     , (select pj2.pos4 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_end
-		 , nvl(jd.pos1,'#') pos1_str
-	     , nvl(jd.pos2,'#') pos2_str
-	     , nvl(jd.pos3,'#') pos3_str
-	     , nvl(jd.pos4,'#') pos4_str
-	     , nvl(jd.pos5,'#') pos5_str
-	     , nvl(jd.pos6,'#') pos6_str
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = CV$STATUS_ACTIVO
-	   and pj.status = CV$STATUS_ACTIVO
-	   and jd.description = pv_description
-	   and pj.drawing_case= pn_drawing_case
-	 order by jd.pos1 nulls last
-	     , jd.pos6 nulls last;     	
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('--------------------------------');
-        dbms_output.put_line(LV$PROCEDURE_NAME);
-        dbms_output.put_line('pn_drawing_case: '||pn_drawing_case);
-        dbms_output.put_line('pn_pos1: '||pn_pos1);
-        dbms_output.put_line('pn_pos2: '||pn_pos2);
-        dbms_output.put_line('pn_pos3: '||pn_pos3);
-        dbms_output.put_line('pn_pos4: '||pn_pos4);
-        dbms_output.put_line('pn_pos5: '||pn_pos5);
-        dbms_output.put_line('pn_pos6: '||pn_pos6);
-    end if;
-    
-	--!cursor para recuperar la configuracion de la lt basado en plan_jugadas
-	for ltMaster in c_lt_pattern_master_p3 (pn_drawing_case => pn_drawing_case
-									      , pv_description  => 'PATRON_TRES_NUMEROS') loop									   
-
-/*		dbms_output.put_line('<<<   JUGADA P3 POS1: '||lpad(ltMaster.pos1_str,2,' ')||' $ POS2: '||
-										lpad(ltMaster.pos2_str,2,' ')||' $ POS3: '||
-										lpad(ltMaster.pos3_str,2,' ')||' $ POS4: '||
-										lpad(ltMaster.pos4_str,2,' ')||' $ POS5: '||
-										lpad(ltMaster.pos5_str,2,' ')||' $ POS6: '||
-										lpad(ltMaster.pos6_str,2,' ')||'   >>>');*/
-		
-		ln$match_cnt:= 0;
-		
-		if ltMaster.pos1 is not null then
-			if to_number(ltMaster.pos1) = pn_pos1 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;	
-		
-		if ltMaster.pos2 is not null then
-			if to_number(ltMaster.pos2) = pn_pos2 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;			
-
-		if ltMaster.pos3 is not null then
-			if to_number(ltMaster.pos3) = pn_pos3 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;	
-
-		if ltMaster.pos4 is not null then
-			if to_number(ltMaster.pos4) = pn_pos4 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;	
-
-		if ltMaster.pos5 is not null then
-			if to_number(ltMaster.pos5) = pn_pos5 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;	
-		
-		if ltMaster.pos6 is not null then
-			if to_number(ltMaster.pos6) = pn_pos6 then
-				ln$match_cnt := ln$match_cnt + 1;
-			end if;	
-		end if;	
-
-		exit when ln$match_cnt = 3;		
-	end loop;						
---	dbms_output.put_line('-------------------------------');
---	dbms_output.put_line('ln$match_cnt: '||ln$match_cnt);
-	if ln$match_cnt = 3 then	
-		return true;
-	else
-		return false;
-	end if;	
-exception
-  when others then
-	return false;
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;   
-end is_plan_jugada_tres;
-
---!sumatoria de todos los campos con error
-procedure actualiza_status_counter is
-	LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'actualiza_status_counter';
-
-    cursor c_status_cnt is
-    select process_id
-         , seq_no
-         , decode(status_extremos,'E',1,0)
-         + decode(status_suma_digitos,'E',1,0)
-         + decode(status_ca,'E',1,0)
-         + decode(status_sin_cambio,'E',1,0)
-         + decode(status_dif_tipo,'E',1,0)
-		 + decode(status_lt,'E',1,0) status_cnt  
-      from olap_sys.s_template_outputs;    
-begin
-    for p in c_status_cnt loop
-        update olap_sys.s_template_outputs
-           set status = p.status_cnt
-         where process_id = p.process_id
-           and seq_no = p.seq_no;
-    end loop; 
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;       
-end actualiza_status_counter;
-
---!validacion de posiciones sin cambio
-procedure valida_posiciones_sin_cambio (pv_drawing_type			  VARCHAR2
-								      , pn_drawing_case			  NUMBER
-                                      , pv_not_null_columns       VARCHAR2
-                                      , pv_null_columns           VARCHAR2
-									  , x_err_code  IN OUT NOCOPY NUMBER) is
-	LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'valida_posiciones_sin_cambio';
-    lrc$ref_cursor2          		  SYS_REFCURSOR;
-
-    ln$process_id                     NUMBER := 0;
-    ln$seq_no                         NUMBER := 0;  
-begin   
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('--------------------------------'); 
-        dbms_output.put_line(LV$PROCEDURE_NAME);
-    end if;
-    
-    olap_sys.w_common_pkg.g_dml_stmt := 'select sto.process_id';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , sto.seq_no';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.s_template_hdr t';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||', olap_sys.s_template_outputs sto';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where t.process_id = sto.process_id';
---        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' and sto.status in ('||chr(39)||'A'||chr(39)||','||chr(39)||'3'||chr(39)||')';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' and t.drawing_case = '||pn_drawing_case;
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||pv_null_columns;  
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' intersect ';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||'select sto.process_id';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , sto.seq_no';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.s_template_hdr t';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||', olap_sys.s_template_outputs sto';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where t.process_id = sto.process_id';
---        olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' and sto.status in ('||chr(39)||'A'||chr(39)||','||chr(39)||'3'||chr(39)||')';
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' and t.drawing_case = '||pn_drawing_case;
-    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||pv_not_null_columns;     
-
-ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt); commit;       
-    olap_sys.w_common_pkg.g_rowcnt := 0;
-    
-    update olap_sys.s_template_outputs
-       set status_sin_cambio = 'E'
-         , validation_message = decode(validation_message,null,CV$VAL_POSICION_SIN_CAMBIO,validation_message);
-    
-    open lrc$ref_cursor2 for olap_sys.w_common_pkg.g_dml_stmt;      
-    loop
-        fetch lrc$ref_cursor2 into ln$process_id, ln$seq_no;
-        exit when lrc$ref_cursor2%notfound;
-        olap_sys.w_common_pkg.g_rowcnt := olap_sys.w_common_pkg.g_rowcnt + 1;
-
-        update olap_sys.s_template_outputs
-           set status_sin_cambio = null
-             , validation_message = decode(validation_message,CV$VAL_POSICION_SIN_CAMBIO,null,validation_message)
-         where process_id = ln$process_id
-           and seq_no = ln$seq_no;
-    end loop;  
-    close lrc$ref_cursor2;
-    dbms_output.put_line(olap_sys.w_common_pkg.g_rowcnt||' rows processed. '||CV$VAL_POSICION_SIN_CAMBIO);
-exception
-  when others then
-    close lrc$ref_cursor2;
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end valida_posiciones_sin_cambio;
-									  
---!procedimiento para contar las jugadas que contengan los numeros favorables calculados por el proceso par_inpar_primo_cnt_handler
-procedure valida_jugada_matches_cnt is
-	LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'valida_jugada_matches_cnt';
-	
-	cursor c_contador_digitos is
-	with avg_contador_digitos_tbl as (
-	select round(avg(rcnt_dif)) avg_rcnt_dif
-	  from olap_sys.pm_contador_digitos
-	 where play_flag = 'Y'
-	) select rcomb
-		   , case when rcnt_dif >= (select avg_rcnt_dif from avg_contador_digitos_tbl) then 10 else 5 end peso_rcnt_dif
-		  from olap_sys.pm_contador_digitos
-		 where play_flag = 'Y';   
-	
-	cursor c_template_outputs is
-	select process_id, seq_no, pos1, pos2, pos3, pos4, pos5, pos6
-	  from olap_sys.s_template_outputs;
-begin   
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('--------------------------------'); 
-        dbms_output.put_line(LV$PROCEDURE_NAME);
-    end if;
-
-    --!procedimiento para contar numeros inpares, pares en base al anio
-	--!de ser necesario actualizar las siguientes constantes en el spec
-    par_inpar_primo_cnt_handler (pn_year_end     => CN$YEAR_END
-							   , pn_years_back   => CN$YEARS_BACK
-							   , pn_primo_cnt    => CN$PRIMO_CNT
-							   , pn_is_primo     => CN$NUMEROS_PARES_INPARES 
-							   , pn_percentile   => CF$PERCENTILE
-							   , pn_min_rcnt_dif => CN$MIN_RCNT_DIF);
-	
-	for k in c_contador_digitos loop
-		for t in c_template_outputs loop
-			if k.rcomb in (t.pos1, t.pos2, t.pos3, t.pos4, t.pos5, t.pos6) then
-				update olap_sys.s_template_outputs
-				   set match_cnt = nvl(match_cnt,0) + k.peso_rcnt_dif
-				 where process_id = t.process_id 
-				   and seq_no = t.seq_no;  
-			end if;
-		end loop;
-	end loop;
-	
-    --!procedimiento para contar numeros primos en base al anio
-	--!de ser necesario actualizar las siguientes constantes en el spec
-    par_inpar_primo_cnt_handler (pn_year_end     => CN$YEAR_END
-							   , pn_years_back   => CN$YEARS_BACK
-							   , pn_primo_cnt    => CN$PRIMO_CNT
-							   , pn_is_primo     => CN$NUMEROS_PRIMOS 
-							   , pn_percentile   => CF$PERCENTILE
-							   , pn_min_rcnt_dif => CN$MIN_RCNT_DIF);
-
-	for k in c_contador_digitos loop
-		for t in c_template_outputs loop
-			if k.rcomb in (t.pos1, t.pos2, t.pos3, t.pos4, t.pos5, t.pos6) then
-				update olap_sys.s_template_outputs
-				   set match_cnt = nvl(match_cnt,0) + k.peso_rcnt_dif
-				 where process_id = t.process_id 
-				   and seq_no = t.seq_no;  
-			end if;
-		end loop;
-	end loop;															
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end valida_jugada_matches_cnt;
+	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
+end valida_plan_jugadas_sums;
+*/
 
 
 --!proceso principal que aplicara validaciones adicionales a las jugadas finales
---!PROCESO OBSOLETO
 procedure extra_validations_handler (pv_drawing_type			  VARCHAR2
 								   , pn_drawing_case			  NUMBER								   
 								   , pn_drawing_id				  NUMBER
 								   , pv_val_sum_enable  		  VARCHAR2
 								   , pv_val_ca_enable  		      VARCHAR2
-								   , pv_val_primos_enable		  VARCHAR2
-								   , pv_val_extremos_enable		  VARCHAR2
-								   , pv_val_pos_sin_cambio_enable VARCHAR2	
-                                   , pv_not_null_columns          VARCHAR2
-                                   , pv_null_columns              VARCHAR2                                   
 								   , x_err_code     IN OUT NOCOPY NUMBER								 
 								    ) is
-  LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'extra_validations_handler';
-	ln$ca_sum					    NUMBER :=0;	
-	ln$primos_sum				    NUMBER :=0;	
-	lv$primo_flag					VARCHAR2(1);
-	lv$pr1							VARCHAR2(2);
-	lv$pr2							VARCHAR2(2);							  
-	lv$pr3							VARCHAR2(2);
-	lv$pr4							VARCHAR2(2);
-	lv$pr5							VARCHAR2(2);
-	lv$pr6							VARCHAR2(2);
-
-	cursor c_jugadas(pn_drawing_case			  NUMBER) is
+  LV$PROCEDURE_NAME       constant varchar2(30) := 'extra_validations_handler';
+	ln$ca_sum					   number :=0;	
+	
+	cursor c_jugadas is
 	select sto.process_id
 		 , sto.seq_no
 		 , to_char(sto.pos1)||','||to_char(sto.pos2)||','||to_char(sto.pos3)||','||to_char(sto.pos4)||','||to_char(sto.pos5)||','||to_char(sto.pos6) drawing_ready
 		 , sto.pos_sum
 		 , nvl(sto.gl_ca_sum,0) gl_ca_sum
-		 , sto.pos1
-		 , sto.pos2
-		 , sto.pos3
-		 , sto.pos4
-		 , sto.pos5
-		 , sto.pos6
-         , decode(sto.status_extremos,'E',1,0)
-         + decode(sto.status_suma_digitos,'E',1,0)
-         + decode(sto.status_ca,'E',1,0)
-         + decode(sto.status_sin_cambio,'E',1,0)
-         + decode(sto.status_dif_tipo,'E',1,0) error_cnt
 	  from olap_sys.s_template_hdr t
          , olap_sys.s_template_outputs sto
      where t.process_id   = sto.process_id
+       and sto.status     = CV$STATUS_ACTIVO
 	   and t.drawing_case = pn_drawing_case; 
 begin
    if GB$SHOW_PROC_NAME then
@@ -7912,11 +7413,10 @@ begin
 		dbms_output.put_line('pn_drawing_case: '||pn_drawing_case);
 		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);		
 		dbms_output.put_line('pv_val_sum_enable: '||pv_val_sum_enable);
-		dbms_output.put_line('pv_val_ca_enable: '||pv_val_ca_enable);
-		dbms_output.put_line('pv_val_pos_sin_cambio_enable: '||pv_val_pos_sin_cambio_enable);
+		dbms_output.put_line('pv_val_sum_enable: '||pv_val_ca_enable);
    end if;		
 
-	for z in c_jugadas (pn_drawing_case => pn_drawing_case) loop
+	for z in c_jugadas loop
 		--dbms_output.put_line(z.drawing_ready);
 
 		--!limpiando el arreglo
@@ -7929,8 +7429,7 @@ begin
 													   );
 		
 		if gtbl$row_source.count > 0 then
-			ln$ca_sum     := 0;
-			ln$primos_sum := 0;
+			ln$ca_sum   := 0;
 			for t in gtbl$row_source.first..gtbl$row_source.last loop
 	
 				begin
@@ -7948,162 +7447,61 @@ begin
 					
 --					dbms_output.put_line(olap_sys.w_common_pkg.g_column_value);
 					ln$ca_sum := ln$ca_sum + olap_sys.w_common_pkg.g_column_value;
-					
-					--!conteo de numeros primos
-					if olap_sys.w_common_pkg.is_prime_number (pn_digit => to_number(gtbl$row_source(t))) = 1 then
-						ln$primos_sum := ln$primos_sum + 1;
-					end if;	
 				exception				
 					when no_data_found then
 						olap_sys.w_common_pkg.g_column_value := 0;
 				end;																						   
 			end loop;
 
-			--!actualizando contador de numeros primos
-			update olap_sys.s_template_outputs
-			   set primo_cnt = ln$primos_sum
-			 where process_id = z.process_id;
-
-			--!funciona valida si la jugada contiene alguno de los patrones de tres numeros
-			if is_plan_jugada_tres(pv_drawing_type	=> pv_drawing_type
-								 , pn_drawing_case	=> pn_drawing_case
-								 , pn_pos1	=> to_number(z.pos1)
-								 , pn_pos2	=> to_number(z.pos2)
-								 , pn_pos3	=> to_number(z.pos3)
-								 , pn_pos4	=> to_number(z.pos4)
-								 , pn_pos5	=> to_number(z.pos5)
-								 , pn_pos6	=> to_number(z.pos6)) then
-				
-				update olap_sys.s_template_outputs
-				   set jugada3_flag = 'Y'
-				 where process_id = z.process_id;  					 
-			end if;	
-
-			--!validacion de patrones de jugadas de tres numeros
-			if pv_val_extremos_enable = CV$ENABLE then
-
-				--!funciona valida si la jugada contiene alguno de los patrones de basado en la distancia de extremos
-				if not is_plan_jugada_extremo(pv_drawing_type => pv_drawing_type
-											, pn_drawing_case => pn_drawing_case
-											, pn_pos1 		  => (z.pos6 - z.pos1) - 1) then
+		--!aplicando la validacion de COMB_SUM
+		if pv_val_sum_enable = CV$ENABLE then
+			begin
+				select 1
+				  into olap_sys.w_common_pkg.g_data_found
+				  from olap_sys.plan_jugadas
+				 where drawing_case = pn_drawing_case
+				   and description 	= 'DECENAS'
+				   and status 		= 'A'
+				   and z.pos_sum between j_comb_sum_ini and j_comb_sum_end;
+			exception
+				when no_data_found then
 					--!proceso para actualizar contadores, estados y mensajes en los templates
 					upd_s_templates_error (pn_process_id		   => z.process_id
 										 , pn_seq_no			   => z.seq_no
-										 , pv_validation_message   => CV$VAL_DISTANCIA_EXTREMOS
-                                         , pv_type                 => CV$VAL_DISTANCIA_EXTREMOS
-										  ); 											
-				end if;						
-			end if;
-
-/*esta validacion ya se aplico en la tabla olap_sys.w_combination_responses_fs			
-			--!aplicando la validacion de COMB_SUM
-			if pv_val_sum_enable = CV$ENABLE then
-				begin
-					select 1
-					  into olap_sys.w_common_pkg.g_data_found
-					  from olap_sys.plan_jugadas
-					 where drawing_case = pn_drawing_case
-					   and description 	= 'DECENAS'
-					   and status 		= 'A'
-					   and z.pos_sum between j_comb_sum_ini and j_comb_sum_end;
-				exception
-					when no_data_found then
-						--!proceso para actualizar contadores, estados y mensajes en los templates
-						upd_s_templates_error (pn_process_id		   => z.process_id
-											 , pn_seq_no			   => z.seq_no
-											 , pv_validation_message   => CV$VAL_SUMA_DIGITOS 
-                                             , pv_type                 => CV$VAL_SUMA_DIGITOS 
-											  ); 
-				end;	
-			end if;		
-*/			   
-			--!aplicando la validacion de CA
-			if pv_val_ca_enable = CV$ENABLE then
-	--				dbms_output.put_line('ln$ca_sum: '||ln$ca_sum);
-				olap_sys.w_common_pkg.g_data_found := 0;
-				begin
-					select 1
-					  into olap_sys.w_common_pkg.g_data_found
-					  from olap_sys.plan_jugadas
-					 where drawing_case = pn_drawing_case
-					   and description 	= 'DECENAS'
-					   and status 		= 'A'
-					   and ln$ca_sum  between R_CA_INI and R_CA_END;
-				exception
-					when no_data_found then
-						--!proceso para actualizar contadores, estados y mensajes en los templates
-						upd_s_templates_error (pn_process_id		   => z.process_id
-											 , pn_seq_no			   => z.seq_no
-											 , pv_validation_message   => CV$VAL_SUMA_CICLO_APARICION
-                                             , pv_type                 => CV$VAL_SUMA_CICLO_APARICION); 
-				end;	
-			end if;	
-
-			--!validando numeros primos
-			if pv_val_primos_enable = CV$ENABLE then
-				--!valida la posicion de los numeros primos en base a metadata en tabla plan_jugadas
-				valida_posicion_primos(pv_drawing_type => pv_drawing_type
-								     , pn_drawing_case => pn_drawing_case
-								     , pn_pos1		   => z.pos1
-								     , pn_pos2		   => z.pos2
-								     , pn_pos3		   => z.pos3
-								     , pn_pos4		   => z.pos4
-								     , pn_pos5		   => z.pos5
-								     , pn_pos6		   => z.pos6
-								     , xv_primo_flag   => lv$primo_flag
-								     , xv_pr1		   => lv$pr1
-								     , xv_pr2		   => lv$pr2
-								     , xv_pr3		   => lv$pr3
-								     , xv_pr4		   => lv$pr4
-								     , xv_pr5		   => lv$pr5
-								     , xv_pr6		   => lv$pr6);	
-				
-				if lv$primo_flag = CV$STATUS_ACTIVO then
-					update olap_sys.s_template_hdr
-					   set pr1 = lv$pr1
-					     , pr2 = lv$pr2
-						 , pr3 = lv$pr3
-						 , pr4 = lv$pr4
-						 , pr5 = lv$pr5
-						 , pr6 = lv$pr6
-					 where process_id = z.process_id;
-					if GB$SHOW_PROC_NAME then
-						dbms_output.put_line(sql%rowcount||' rows updated');					 
-					end if;	
-				else	 
-					--!proceso para actualizar contadores, estados y mensajes en los templates
-					upd_s_templates_error (pn_process_id		   => z.process_id
-										 , pn_seq_no			   => z.seq_no
-										 , pv_validation_message   => CV$VAL_POSICION_PRIMOS
-                                         , pv_type                 => CV$VAL_POSICION_PRIMOS
+										 , pv_validation_message => 'VAL POSITION SUM'
 										  ); 
-				end if;	
-			end if;
-            	           
+			end;	
+		end if;		
+		   
+		--!aplicando la validacion de CA
+		if pv_val_ca_enable = CV$ENABLE then
+--				dbms_output.put_line('ln$ca_sum: '||ln$ca_sum);
+			olap_sys.w_common_pkg.g_data_found := 0;
+			begin
+				select 1
+				  into olap_sys.w_common_pkg.g_data_found
+				  from olap_sys.plan_jugadas
+				 where drawing_case = pn_drawing_case
+				   and description 	= 'DECENAS'
+				   and status 		= 'A'
+				   and ln$ca_sum  between R_CA_INI and R_CA_END;
+			exception
+				when no_data_found then
+					--!proceso para actualizar contadores, estados y mensajes en los templates
+					upd_s_templates_error (pn_process_id		   => z.process_id
+										 , pn_seq_no			   => z.seq_no
+										 , pv_validation_message => 'VAL GL CA SUM'
+										  ); 
+			end;	
+		end if;			
 		end if;	
-               
+
+
 		if GB$SHOW_PROC_NAME then
 			dbms_output.put_line('data: '||z.process_id||'-'||z.seq_no||'-'||z.pos_sum||'-'||z.drawing_ready||' => '||ln$ca_sum);
 		end if;	
 	end loop;
-
-    --!validacion de posiciones sin cambio
-    if pv_val_pos_sin_cambio_enable = CV$ENABLE then
-        --!validacion de posiciones sin cambio
-        valida_posiciones_sin_cambio (pv_drawing_type     => pv_drawing_type
-                                    , pn_drawing_case     => pn_drawing_case
-                                    , pv_not_null_columns => pv_not_null_columns
-                                    , pv_null_columns     => pv_null_columns
-                                    , x_err_code          => x_err_code);				
-    end if;
-
-    --!procedimiento para contar las jugadas que contengan los numeros favorables 
-	--!calculados por el proceso par_inpar_primo_cnt_handler
-	valida_jugada_matches_cnt;
-
-    --!sumatoria de todos los campos con error
-    actualiza_status_counter;
-    
+	
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
 exception
   when others then
@@ -8116,30 +7514,6 @@ end extra_validations_handler;
 procedure imprime_resumen_jugadas (pn_drawing_case	NUMBER
 								 , pn_drawing_id	NUMBER) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'imprime_resumen_jugadas'; 
-  	
-	cursor c_total_jugadas (pn_drawing_case	NUMBER
-						  , pn_drawing_id	NUMBER) is
-  --!contando total de jugadas
-    select nvl(sto.jugada3_flag,'X') jugada3_flag
-           , decode(sto.status_extremos,'E',1,0)
-           + decode(sto.status_suma_digitos,'E',1,0)
-           + decode(sto.status_ca,'E',1,0)
-           + decode(sto.status_sin_cambio,'E',1,0)
-           + decode(sto.status_dif_tipo,'E',1,0) error_cnt
-           , count(1) cnt
-          from olap_sys.s_template_hdr t
-             , olap_sys.s_template_outputs sto
-         where t.process_id = sto.process_id
-           and t.drawing_case = pn_drawing_case
-           and t.drawing_id   = pn_drawing_id
-         group by nvl(sto.jugada3_flag,'X')
-           , decode(sto.status_extremos,'E',1,0)
-           + decode(sto.status_suma_digitos,'E',1,0)
-           + decode(sto.status_ca,'E',1,0)
-           + decode(sto.status_sin_cambio,'E',1,0)
-           + decode(sto.status_dif_tipo,'E',1,0)
-       order by jugada3_flag  desc	 
-	   ;
 begin
    if GB$SHOW_PROC_NAME then
 		dbms_output.put_line('--------------------------------');
@@ -8150,26 +7524,18 @@ begin
 
 
 	dbms_output.put_line(gn$jugadas_presentadas_cnt||' Total de jugadas generadas');		
-    olap_sys.w_common_pkg.g_rowcnt := 0;
-	for k in c_total_jugadas (pn_drawing_case => pn_drawing_case
-						    , pn_drawing_id	  => pn_drawing_id) loop		
-		if k.jugada3_flag = 'Y' then
-            if k.error_cnt = 0 then
-                dbms_output.put_line(lpad(k.cnt,2,'0')||' Total de jugadas finales con patron de tres');		
-            else
-                dbms_output.put_line(lpad(k.cnt,2,'0')||' Total de jugadas con patron de tres y '||k.error_cnt||' errores');		
-            end if;	
-        else
-             if k.error_cnt = 0 then
-                dbms_output.put_line(lpad(k.cnt,2,'0')||' Total de jugadas finales sin patron de tres');		
-            else
-                dbms_output.put_line(lpad(k.cnt,2,'0')||' Total de jugadas sin patron de tres y '||k.error_cnt||' errores');		
-            end if;	    
-        end if;
-        olap_sys.w_common_pkg.g_rowcnt := olap_sys.w_common_pkg.g_rowcnt + k.cnt;
-	end loop;	
---    dbms_output.put_line(lpad(olap_sys.w_common_pkg.g_rowcnt,2,'0')||' Total de jugadas finales');
-	
+
+	--!contando total de jugadas activas
+	select count(1) cnt
+	  into gn$jugadas_finales_cnt
+	  from olap_sys.s_template_hdr t
+		 , olap_sys.s_template_outputs sto
+	 where t.process_id = sto.process_id
+	   and sto.status = 'A'
+	   and t.drawing_case = pn_drawing_case
+	   and t.drawing_id   = pn_drawing_id;
+
+	dbms_output.put_line(gn$jugadas_finales_cnt||' Total de jugadas finales generadas');
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());      
@@ -8329,157 +7695,6 @@ exception
 end get_jugadas_listas_seq;
 
 
---!construye las condiciones dinammicas de las columnas con cambio y sin cambio 
-procedure get_dinamic_where_clause(pn_drawing_case			  		 NUMBER
-								 , xv_not_null_columns IN OUT NOCOPY VARCHAR2
-								 , xv_null_columns 	   IN OUT NOCOPY VARCHAR2
-								 , x_err_code    	   IN OUT NOCOPY NUMBER
-								  ) is
-	LV$PROCEDURE_NAME        CONSTANT VARCHAR2(30) := 'get_dinamic_where_clause';
-	gtbl$row_source                   dbms_sql.varchar2_table;
-    lb$not_null_columns_flag          boolean := FALSE;
-    lb$null_columns_flag              boolean := FALSE;
-    
-	/*cursor c_not_null_columns (pn_drawing_case			  		 NUMBER) is
-	with cnt_details_tbl as (      
-	select 'CHANGE_POS1' column_name, sto.CHANGE_POS1 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS1 is null group by sto.CHANGE_POS1     
-	union
-	select 'CHANGE_POS2' column_name, sto.CHANGE_POS2 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS2 is null group by sto.CHANGE_POS2     
-	union
-	select 'CHANGE_POS3' column_name, sto.CHANGE_POS3 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS3 is null group by sto.CHANGE_POS3     
-	union
-	select 'CHANGE_POS4' column_name, sto.CHANGE_POS4 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS4 is null group by sto.CHANGE_POS4     
-	union
-	select 'CHANGE_POS5' column_name, sto.CHANGE_POS5 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS5 is null group by sto.CHANGE_POS5     
-	union
-	select 'CHANGE_POS6' column_name, sto.CHANGE_POS6 pos, count(1) cnt from olap_sys.s_template_hdr t, olap_sys.s_template_outputs sto where t.process_id = sto.process_id and t.drawing_case = pn_drawing_case and sto.CHANGE_POS6 is null group by sto.CHANGE_POS6     
-	), cnt_avg_tbl as (
-	select avg(cnt) cnt_avg
-		from cnt_details_tbl
-	) select column_name
-		from cnt_details_tbl
-	   where cnt < (select cnt_avg from cnt_avg_tbl)
-	  order by column_name;*/
-
-	cursor c_not_null_columns (pn_drawing_case			  		 NUMBER) is
-	with cnt_details_tbl as (      
-    select 'CHANGE_POS1' column_name, chng_pos1 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos1 is null group by chng_pos1
-    union
-    select 'CHANGE_POS2' column_name, chng_pos2 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos2 is null group by chng_pos2
-    union
-    select 'CHANGE_POS3' column_name, chng_pos3 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos3 is null group by chng_pos3
-    union
-    select 'CHANGE_POS4' column_name, chng_pos4 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos4 is null group by chng_pos4
-    union
-    select 'CHANGE_POS5' column_name, chng_pos5 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos5 is null group by chng_pos5
-    union
-    select 'CHANGE_POS6' column_name, chng_pos6 pos, count(1) cnt from olap_sys.pm_mr_resultados_v2 where gambling_id > 595 and dr = pn_drawing_case and chng_pos6 is null group by chng_pos6
-    ), cnt_avg_tbl as (
-	select avg(cnt) cnt_avg
-         , percentile_disc(0.25) within group (order by cnt) cnt_per
-		from cnt_details_tbl
-	) select column_name
-		from cnt_details_tbl
-	   --where cnt < (select cnt_avg from cnt_avg_tbl)
-       where cnt < (select cnt_per from cnt_avg_tbl)
-	  order by column_name;      
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('--------------------------------');
-        dbms_output.put_line(LV$PROCEDURE_NAME);
-    end if;
-    
-	--!inicializando arreglo con las condiciones del where clause
-	gtbl$row_source(1) := 'CHANGE_POS1 IS NULL';
-	gtbl$row_source(2) := 'CHANGE_POS2 IS NULL';
-	gtbl$row_source(3) := 'CHANGE_POS3 IS NULL';
-	gtbl$row_source(4) := 'CHANGE_POS4 IS NULL';
-	gtbl$row_source(5) := 'CHANGE_POS5 IS NULL';
-	gtbl$row_source(6) := 'CHANGE_POS6 IS NULL';
-	
-	--!actualizando las condiciones del where clause
-	for k in c_not_null_columns (pn_drawing_case => pn_drawing_case) loop
-		if k.column_name = 'CHANGE_POS1' then
-			gtbl$row_source(1) := replace(gtbl$row_source(1),'IS NULL','IS NOT NULL');
-		elsif k.column_name = 'CHANGE_POS2' then
-			gtbl$row_source(2) := replace(gtbl$row_source(2),'IS NULL','IS NOT NULL');
-		elsif k.column_name = 'CHANGE_POS3' then
-			gtbl$row_source(3) := replace(gtbl$row_source(3),'IS NULL','IS NOT NULL');
-		elsif k.column_name = 'CHANGE_POS4' then
-			gtbl$row_source(4) := replace(gtbl$row_source(4),'IS NULL','IS NOT NULL');
-		elsif k.column_name = 'CHANGE_POS5' then
-			gtbl$row_source(5) := replace(gtbl$row_source(5),'IS NULL','IS NOT NULL');
-		elsif k.column_name = 'CHANGE_POS6' then
-			gtbl$row_source(6) := replace(gtbl$row_source(6),'IS NULL','IS NOT NULL');
-		end if;		
-	end loop;
-
-/*
-	dbms_output.put_line(gtbl$row_source(1));
-    dbms_output.put_line(gtbl$row_source(2));
-	dbms_output.put_line(gtbl$row_source(3));
-    dbms_output.put_line(gtbl$row_source(4));
-    dbms_output.put_line(gtbl$row_source(5));
-    dbms_output.put_line(gtbl$row_source(6));
-*/
-    
-    --!formando where condition
-    xv_null_columns := NULL;
-    xv_not_null_columns := NULL;
-    olap_sys.w_common_pkg.g_rowcnt := 1;
-	for t in gtbl$row_source.first..gtbl$row_source.last loop
-		if instr(gtbl$row_source(t),'IS NOT NULL') > 0 then
---			if olap_sys.w_common_pkg.g_rowcnt = 1 then
-				xv_not_null_columns := xv_not_null_columns ||gtbl$row_source(t)||' AND ';
-                --xv_null_columns := xv_null_columns ||gtbl$row_source(t)||' AND ';
---dbms_output.put_line('hey: '||xv_not_null_columns);
---			else
---				xv_not_null_columns := xv_not_null_columns ||gtbl$row_source(t)||' OR ';
---dbms_output.put_line('hay: '||xv_not_null_columns);
---			end if;	 
-		else
---			if olap_sys.w_common_pkg.g_rowcnt = 1 then
-                xv_null_columns := xv_null_columns ||gtbl$row_source(t)||' AND '; 
-                --xv_not_null_columns := xv_not_null_columns ||gtbl$row_source(t)||' AND ';  
---            else
---				xv_null_columns := xv_null_columns ||gtbl$row_source(t)||' OR ';
---            end if;    
-		end if;
-        olap_sys.w_common_pkg.g_rowcnt := olap_sys.w_common_pkg.g_rowcnt + 1;
-	end loop;
-
-	--!retorno de columnas nulas
-    if xv_null_columns is not null then
-        xv_null_columns := ' AND ('||xv_null_columns ||')';
-        xv_null_columns := replace(xv_null_columns, 'AND )',')');
--- dbms_output.put_line('hoy 3: '||xv_null_columns); 
-    else
-        xv_null_columns := ' AND 1 = 1';
--- dbms_output.put_line('hoy 4: '||xv_null_columns);          
-    end if; 
---dbms_output.put_line('hoy 2: '||xv_null_columns);      
-
-
-
-    --!retorno de columnas no nulas
-    if xv_not_null_columns is not null then
-        xv_not_null_columns := ' AND ('||xv_not_null_columns ||')';
-        xv_not_null_columns := replace(xv_not_null_columns,'AND )',')');
--- dbms_output.put_line('hoy 3: '||xv_not_null_columns); 
-    else
-        xv_not_null_columns := ' AND 1 = 1';
--- dbms_output.put_line('hoy 4: '||xv_not_null_columns);          
-    end if;    
--- dbms_output.put_line('hoy 5: '||xv_not_null_columns);      
-	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	
-exception
-  when others then
-	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end get_dinamic_where_clause;
-
-
 --!proceso principal para obtener los digitos iniciales a ser usados en jugadas para los sorteos
 procedure main_posicion_IN_handler(pv_drawing_type              VARCHAR2 DEFAULT 'mrtr'
 								 , pn_drawing_case              NUMBER
@@ -8491,40 +7706,11 @@ procedure main_posicion_IN_handler(pv_drawing_type              VARCHAR2 DEFAULT
 								 , pv_add_primo_enable			VARCHAR2 DEFAULT 'N'
 								 , pn_lt_red_cnt				NUMBER DEFAULT 2
 								 --!validacion comb_sum
-								 , pv_val_sum_enable  		    VARCHAR2 DEFAULT 'N'
+								 , pv_val_sum_enable  		    VARCHAR2 DEFAULT 'Y'
 								 --!validacion gl ca
-								 , pv_val_ca_enable  		    VARCHAR2 DEFAULT 'N'
-								 --!validacion numeros primos
-								 , pv_val_primos_enable  		VARCHAR2 DEFAULT 'N'
-								 --!validacion extremos
-								 , pv_val_extremos_enable  		VARCHAR2 DEFAULT 'N'
-								 --!contador de numeros consecutivos
-								 , pn_consecutivos_cnt  		NUMBER DEFAULT 0
-								 --!validacion de posiciones sin cambio
-                                 , pv_val_pos_sin_cambio_enable VARCHAR2 DEFAULT 'N'									 
+								 , pv_val_ca_enable  		    VARCHAR2 DEFAULT 'Y'
 								 --!indicador de terminaciones repetidas en la jugadas. Default 2
 								 , pn_term_cnt					NUMBER DEFAULT 2
-								 --!bandera de numeros favorables
-								 , pv_favorable_flag_1			VARCHAR2 DEFAULT NULL
-								 , pv_favorable_flag_2			VARCHAR2 DEFAULT NULL
-								 , pv_favorable_flag_3			VARCHAR2 DEFAULT NULL
-								 , pv_favorable_flag_4			VARCHAR2 DEFAULT NULL
-								 , pv_favorable_flag_5			VARCHAR2 DEFAULT NULL
-								 , pv_favorable_flag_6			VARCHAR2 DEFAULT NULL	
-								 --!bandera de posiciones sin cambio
-								 , pv_change_flag_1				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO
-								 , pv_change_flag_2				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO
-								 , pv_change_flag_3				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO
-								 , pv_change_flag_4				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO
-								 , pv_change_flag_5				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO
-								 , pv_change_flag_6				VARCHAR2 DEFAULT CV$POSICION_SIN_CAMBIO	
-								 --!bandera de pronostico por ciclo
-								 , pv_pxc_flag_1				VARCHAR2 DEFAULT CV$DISABLE
-								 , pv_pxc_flag_2				VARCHAR2 DEFAULT CV$DISABLE
-								 , pv_pxc_flag_3				VARCHAR2 DEFAULT CV$DISABLE
-								 , pv_pxc_flag_4				VARCHAR2 DEFAULT CV$DISABLE
-								 , pv_pxc_flag_5				VARCHAR2 DEFAULT CV$DISABLE
-								 , pv_pxc_flag_6				VARCHAR2 DEFAULT CV$DISABLE										 
 								 , x_err_code     IN OUT NOCOPY NUMBER								 
 								  ) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'main_posicion_IN_handler';
@@ -8572,9 +7758,82 @@ procedure main_posicion_IN_handler(pv_drawing_type              VARCHAR2 DEFAULT
   lv$qry_stmt                      	varchar2(4000); 
   ln$process_id             		number := 0;
   ltbl$numero_primo                 gt$np_tbl; 
-  lv$in_extremos_list				varchar2(1000); 
-  lv$not_null_columns				varchar2(500); 
-  lv$null_columns					varchar2(500);  
+ 
+
+  --!cursor para recuperar la configuracion de la lt basado en plan_jugadas
+  cursor c_lt_pattern_master (pn_drawing_id			number) is
+	select distinct jd.pos1
+	     , jd.pos2
+	     , jd.pos3
+	     , jd.pos4
+	     , jd.pos5
+	     , jd.pos6 
+	     , (select pj2.pos1 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_ini 
+	     , (select pj2.pos2 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) percentage_end
+	     , (select pj2.pos3 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_ini
+	     , (select pj2.pos4 from olap_sys.plan_jugadas pj2 where pj2.id = jd.lt_pattern_id) seq_end
+		 , nvl(jd.pos1,'#') pos1_str
+	     , nvl(jd.pos2,'#') pos2_str
+	     , nvl(jd.pos3,'#') pos3_str
+	     , nvl(jd.pos4,'#') pos4_str
+	     , nvl(jd.pos5,'#') pos5_str
+	     , nvl(jd.pos6,'#') pos6_str
+	  from olap_sys.plan_jugada_details jd
+		 , olap_sys.plan_jugadas pj 
+	 where pj.drawing_type = jd.drawing_type 
+	   and pj.id = jd.plan_jugada_id 
+	   and jd.status = CV$STATUS_ACTIVO
+	   and pj.status = CV$STATUS_ACTIVO
+	   and jd.description = 'LEY_TERCIO_IN' 
+	   and pj.drawing_case= pn_drawing_case
+	 order by jd.pos1 nulls last
+	     , jd.pos6 nulls last; 
+ 
+  --!cursor para recuperar la configuracion de la lt basado en s_gl_ley_tercio_patterns
+  cursor c_lt_pattern_detail (pn_percentage_ini		  number
+						    , pn_percentage_end		  number
+						    , pn_percentage_seq_ini   number
+						    , pn_percentage_seq_end   number
+						    , pv_pos1				  varchar2
+						    , pv_pos2				  varchar2
+						    , pv_pos3				  varchar2
+						    , pv_pos4				  varchar2
+						    , pv_pos5				  varchar2
+						    , pv_pos6				  varchar2
+						    , pn_lt_red_cnt			  number
+						    , pn_drawing_id			  number
+						    , pn_drawing_case		  number
+						     ) is
+	select seq_no_percentage seq_no_pct
+	     , seq_no
+		 , lt1
+		 , lt2
+		 , lt3
+		 , lt4
+		 , lt5
+		 , lt6
+		 , lt.red_cnt
+	  from olap_sys.s_gl_ley_tercio_patterns lt
+	where lt.seq_no_percentage between pn_percentage_ini and pn_percentage_end
+	  and lt.seq_no >= decode(pn_percentage_seq_ini,0,lt.seq_no,pn_percentage_seq_ini)
+	  and lt.seq_no <= decode(pn_percentage_seq_end,0,lt.seq_no,pn_percentage_seq_end)
+	  and lt.match_cnt = 0
+	  and lt.lt1 != '#'
+	  and lt.lt2 != '#'
+	  and lt.lt3 != '#'
+	  and lt.lt4 != '#'
+	  and lt.lt5 != '#'
+	  and lt.lt6 != '#'
+	  and lt.red_cnt <= pn_lt_red_cnt
+	  and lt.last_drawing_id = pn_drawing_id           
+	  and (lt.lt1, lt.lt2, lt.lt3, lt.lt4, lt.lt5, lt.lt6) in ((nvl(pv_pos1,lt.lt1)
+															  , nvl(pv_pos2,lt.lt2)
+															  , nvl(pv_pos3,lt.lt3)
+															  , nvl(pv_pos4,lt.lt4)
+															  , nvl(pv_pos5,lt.lt5)
+															  , nvl(pv_pos6,lt.lt6)))
+	order by seq_no_pct, seq_no;     
+  
 begin
    if GB$SHOW_PROC_NAME then
 		dbms_output.put_line('--------------------------------');
@@ -8646,20 +7905,6 @@ begin
 						 , xv_chng_posicion_pos6 => lv$chng_posicion_pos6
 						 , x_err_code         	 => x_err_code
 						  );
-/*esta validacion ya se aplico en la tabla olap_sys.w_combination_responses_fs
-	--!proceso para formar un IN con las lista de diferencia de extremos
-	get_pm_diferencia_extremos(pv_drawing_type     => pv_drawing_type
-						     , pn_drawing_case     => pn_drawing_case
-						     , xv_in_extremos_list => lv$in_extremos_list								
-						     , x_err_code    	   => x_err_code
-						      );
-*/
-	--!construye las condiciones dinammicas de las columnas con cambio y sin cambio 
-	get_dinamic_where_clause(pn_drawing_case	 => pn_drawing_case
-						   , xv_not_null_columns => lv$not_null_columns
-						   , xv_null_columns 	 => lv$null_columns
-						   , x_err_code    	     => x_err_code
-						    );                        
 								  
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 		--!proceso para obtener el string para formar el IN de las frecuencias
@@ -8694,14 +7939,14 @@ begin
 --				if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							
 			if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 				
---				for ppn in c_conf_ppn (pv_drawing_type => pv_drawing_type
---									 , pn_drawing_case => pn_drawing_case) loop
+				for ppn in c_conf_ppn (pv_drawing_type => pv_drawing_type
+									 , pn_drawing_case => pn_drawing_case) loop
 						
 					dbms_output.put_line('<<<   ----------------------------------------------------------------------------------------   >>>');	
 					if gv$d1 != CV$SIN_VALOR then
 						dbms_output.put_line('<<<   POS1: ('||replace(replace(gv$d1,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ POS2: ('||replace(replace(gv$d2,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ POS3: ('||replace(replace(gv$d3,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ POS4: ('||replace(replace(gv$d4,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ POS5: ('||replace(replace(gv$d5,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ POS6: ('||replace(replace(gv$d6,'DIGIT BETWEEN ',NULL),' AND ','-')||') $ rank: ('||gv$decena_rank||')   >>>');													
 					end if;
---					dbms_output.put_line('<<<   DECENAS POS1: '||lpad(ppn.pos1,2,' ')||'   POS2: '||lpad(ppn.pos2,2,' ')||'   POS3: '||lpad(ppn.pos3,2,' ')||'   POS4: '||lpad(ppn.pos4,2,' ')||'   POS5: '||lpad(ppn.pos5,2,' ')||'   POS6: '||lpad(ppn.pos6,2,' ')||' SEQNO: '||ppn.seq_no||' SORT_EXECUTION: '||ppn.sort_execution||'   >>>');							
+					dbms_output.put_line('<<<   DECENAS POS1: '||lpad(ppn.pos1,2,' ')||'   POS2: '||lpad(ppn.pos2,2,' ')||'   POS3: '||lpad(ppn.pos3,2,' ')||'   POS4: '||lpad(ppn.pos4,2,' ')||'   POS5: '||lpad(ppn.pos5,2,' ')||'   POS6: '||lpad(ppn.pos6,2,' ')||' SEQNO: '||ppn.seq_no||' SORT_EXECUTION: '||ppn.sort_execution||'   >>>');							
 					
 
 					--!inicializando arreglos y variables  de listas de numeros
@@ -8723,8 +7968,7 @@ begin
 
 
 					--!cursor para recuperar la configuracion de la lt basado en plan_jugadas
-					for ltMaster in c_lt_pattern_master (pn_drawing_case => pn_drawing_case
-													   , pv_description  => 'LEY_TERCIO_IN') loop
+					for ltMaster in c_lt_pattern_master (pn_drawing_id	       => gn$drawing_id) loop
 
 						dbms_output.put_line('<<<   JUGADA  POS1: '||lpad(ltMaster.pos1_str,2,' ')||' $ POS2: '||
 														lpad(ltMaster.pos2_str,2,' ')||' $ POS3: '||
@@ -8732,7 +7976,7 @@ begin
 														lpad(ltMaster.pos4_str,2,' ')||' $ POS5: '||
 														lpad(ltMaster.pos5_str,2,' ')||' $ POS6: '||
 														lpad(ltMaster.pos6_str,2,' ')||'   >>>');					
-					/*--!cursor para recuperar la configuracion de la lt basado en s_gl_ley_tercio_patterns
+					--!cursor para recuperar la configuracion de la lt basado en s_gl_ley_tercio_patterns
 					for ltIN in c_lt_pattern_detail (pn_percentage_ini     => ltMaster.percentage_ini 
 												   , pn_percentage_end     => ltMaster.percentage_end
 												   , pn_percentage_seq_ini => ltMaster.seq_ini
@@ -8745,7 +7989,7 @@ begin
 												   , pv_pos6			   => ltMaster.pos6
 												   , pn_lt_red_cnt	       => pn_lt_red_cnt
 												   , pn_drawing_id	       => gn$drawing_id
-												   , pn_drawing_case	   => pn_drawing_case) loop*/
+												   , pn_drawing_case	   => pn_drawing_case) loop
 
 						--!recupera el ID global de las jugadas listas
 						ln$process_id := get_jugadas_listas_seq;
@@ -8756,28 +8000,28 @@ begin
 									     , pn_drawing_id   => ln$next_drawing_id
 										 , pn_diferencia_tipo => pn_diferencia_tipo
 										 , pn_term_cnt     => pn_term_cnt
-										 , pn_lt_red_cnt   => 0
-									     , pn_seq_no_pct   => 0
-									     , pn_seq_no	   => 0
+										 , pn_lt_red_cnt   => ltIN.red_cnt
+									     , pn_seq_no_pct   => ltIN.seq_no_pct
+									     , pn_seq_no	   => ltIN.seq_no
 									     , pv_fr1		   => lv$fre_IN1
 									     , pv_fr2		   => lv$fre_IN2
 									     , pv_fr3		   => lv$fre_IN3
 									     , pv_fr4		   => lv$fre_IN4
 									     , pv_fr5		   => lv$fre_IN5
 									     , pv_fr6		   => lv$fre_IN6
-									     , pv_lt1		   => ltMaster.pos1
-									     , pv_lt2		   => ltMaster.pos2
-									     , pv_lt3		   => ltMaster.pos3
-									     , pv_lt4		   => ltMaster.pos4
-									     , pv_lt5		   => ltMaster.pos5
-									     , pv_lt6		   => ltMaster.pos6
-									     , pv_pr1		   => NULL
-									     , pv_pr2		   => NULL
-									     , pv_pr3		   => NULL
-									     , pv_pr4		   => NULL
-									     , pv_pr5		   => NULL
-									     , pv_pr6		   => NULL
-										 , pn_pr_sort      => NULL
+									     , pv_lt1		   => ltIN.lt1
+									     , pv_lt2		   => ltIN.lt2
+									     , pv_lt3		   => ltIN.lt3
+									     , pv_lt4		   => ltIN.lt4
+									     , pv_lt5		   => ltIN.lt5
+									     , pv_lt6		   => ltIN.lt6
+									     , pv_pr1		   => ppn.pos1
+									     , pv_pr2		   => ppn.pos2
+									     , pv_pr3		   => ppn.pos3
+									     , pv_pr4		   => ppn.pos4
+									     , pv_pr5		   => ppn.pos5
+									     , pv_pr6		   => ppn.pos6
+										 , pn_pr_sort      => ppn.sort_execution
 										  );
 						
 						--formar query base para GL
@@ -8790,13 +8034,13 @@ begin
 								   , x_err_code        => x_err_code
 									);
 						
-/*						dbms_output.put_line('<<<   LT      POS1: '||lpad(ltMaster.pos1,2,' ')||' $ POS2: '||
-									lpad(ltMaster.pos2,2,' ')||' $ POS3: '||
-									lpad(ltMaster.pos3,2,' ')||' $ POS4: '||
-									lpad(ltMaster.pos4,2,' ')||' $ POS5: '||
-									lpad(ltMaster.pos5,2,' ')||' $ POS6: '||
-									lpad(ltMaster.pos6,2,' ')||'   >>>');
-						dbms_output.put_line('<<<   LT      POS1: '||replace(replace(replace(ltIN.lt1,'(1)','RED'),'(2)','GREEN'),'(3)','BLUE')||' $ POS2:'||
+						dbms_output.put_line('<<<   LT      POS1: '||lpad(ltIN.lt1,2,' ')||' $ POS2: '||
+									lpad(ltIN.lt2,2,' ')||' $ POS3: '||
+									lpad(ltIN.lt3,2,' ')||' $ POS4: '||
+									lpad(ltIN.lt4,2,' ')||' $ POS5: '||
+									lpad(ltIN.lt5,2,' ')||' $ POS6: '||
+									lpad(ltIN.lt6,2,' ')||' $ SEQ: '||ltIN.seq_no||'   >>>');
+/*						dbms_output.put_line('<<<   LT      POS1: '||replace(replace(replace(ltIN.lt1,'(1)','RED'),'(2)','GREEN'),'(3)','BLUE')||' $ POS2:'||
 														replace(replace(replace(ltIN.lt2,'(1)','RED'),'(2)','GREEN'),'(3)','BLUE')||' $ POS3:'||
 														replace(replace(replace(ltIN.lt3,'(1)','RED'),'(2)','GREEN'),'(3)','BLUE')||' $ POS4:'||
 														replace(replace(replace(ltIN.lt4,'(1)','RED'),'(2)','GREEN'),'(3)','BLUE')||' $ POS5:'||
@@ -8807,20 +8051,17 @@ begin
 													  , pn_drawing_id        => gn$drawing_id
 													  , pn_digit_pos         => 1														  
 													  , pv_fre_IN	         => lv$fre_IN1
-													  , pv_lt_IN		     => ltMaster.pos1
+													  , pv_lt_IN		     => ltIN.lt1
 													  , pv_ca			     => gv$ca1
 													  , pv_decena            => gv$d1
 													  , pv_next_decena       => gv$d2
-													  , pv_conf_ppn          => NULL 
+													  , pv_conf_ppn          => ppn.pos1 
 													  , pv_qry_stmt   	     => gv$qry_stmt
 													  , pv_qry_where_stmt    => gv$qry_where_stmt
 													  , pv_qry_order_stmt    => gv$qry_order_stmt
 													  , pv_numero_primo_list => lv$numero_primo_list
 													  , pv_add_primo_enable  => pv_add_primo_enable
 													  , pv_chng_posicion_pos => lv$chng_posicion_pos1
-													  , pv_favorable_flag    => pv_favorable_flag_1
-													  , pv_change_flag       => pv_change_flag_1
-													  , pv_pxc_flag          => pv_pxc_flag_1
 													  , xtbl_qry_output   	 => ltbl$list_array_pos1
 													  , x_err_code    	     => x_err_code
 													   );
@@ -8831,20 +8072,17 @@ begin
 														  , pn_drawing_id        => gn$drawing_id
 														  , pn_digit_pos         => 2														  
 														  , pv_fre_IN	         => lv$fre_IN2
-														  , pv_lt_IN		     => ltMaster.pos2
+														  , pv_lt_IN		     => ltIN.lt2
 														  , pv_ca			     => gv$ca2
 														  , pv_decena            => gv$d2
 														  , pv_next_decena       => gv$d3
-														  , pv_conf_ppn          => NULL
+														  , pv_conf_ppn          => ppn.pos2
 														  , pv_qry_stmt   	     => gv$qry_stmt
 														  , pv_qry_where_stmt    => gv$qry_where_stmt
 														  , pv_qry_order_stmt    => gv$qry_order_stmt
 														  , pv_numero_primo_list => lv$numero_primo_list
 														  , pv_add_primo_enable  => pv_add_primo_enable
 														  , pv_chng_posicion_pos => lv$chng_posicion_pos2
-														  , pv_favorable_flag    => pv_favorable_flag_2
-														  , pv_change_flag       => pv_change_flag_2
-														  , pv_pxc_flag          => pv_pxc_flag_2
 														  , xtbl_qry_output   	 => ltbl$list_array_pos2
 														  , x_err_code    	  	 => x_err_code
 														   );
@@ -8855,20 +8093,17 @@ begin
 															  , pn_drawing_id        => gn$drawing_id
 															  , pn_digit_pos         => 3														  
 															  , pv_fre_IN	         => lv$fre_IN3
-															  , pv_lt_IN		     => ltMaster.pos3
+															  , pv_lt_IN		     => ltIN.lt3
 															  , pv_ca			     => gv$ca3
 															  , pv_decena            => gv$d3
 															  , pv_next_decena       => gv$d4
-															  , pv_conf_ppn          => NULL
+															  , pv_conf_ppn          => ppn.pos3
 															  , pv_qry_stmt   	     => gv$qry_stmt
 															  , pv_qry_where_stmt    => gv$qry_where_stmt
 															  , pv_qry_order_stmt    => gv$qry_order_stmt
 															  , pv_numero_primo_list => lv$numero_primo_list
 															  , pv_add_primo_enable  => pv_add_primo_enable
 															  , pv_chng_posicion_pos => lv$chng_posicion_pos3
-															  , pv_favorable_flag    => pv_favorable_flag_3
-															  , pv_change_flag       => pv_change_flag_3
-															  , pv_pxc_flag          => pv_pxc_flag_3
 															  , xtbl_qry_output   	 => ltbl$list_array_pos3
 															  , x_err_code    	  	 => x_err_code
 															   );
@@ -8879,20 +8114,17 @@ begin
 																  , pn_drawing_id        => gn$drawing_id
 																  , pn_digit_pos         => 4														  
 																  , pv_fre_IN	         => lv$fre_IN4
-																  , pv_lt_IN		     => ltMaster.pos4
+																  , pv_lt_IN		     => ltIN.lt4
 																  , pv_ca			     => gv$ca4
 																  , pv_decena            => gv$d4
 																  , pv_next_decena       => gv$d5
-																  , pv_conf_ppn          => NULL
+																  , pv_conf_ppn          => ppn.pos4
 																  , pv_qry_stmt   	     => gv$qry_stmt
 																  , pv_qry_where_stmt    => gv$qry_where_stmt
 																  , pv_qry_order_stmt    => gv$qry_order_stmt
 																  , pv_numero_primo_list => lv$numero_primo_list
 																  , pv_add_primo_enable  => pv_add_primo_enable
 																  , pv_chng_posicion_pos => lv$chng_posicion_pos4
-																  , pv_favorable_flag    => pv_favorable_flag_4
-																  , pv_change_flag       => pv_change_flag_4
-																  , pv_pxc_flag          => pv_pxc_flag_4
 																  , xtbl_qry_output   	 => ltbl$list_array_pos4
 																  , x_err_code    	  	 => x_err_code
 																   );
@@ -8903,20 +8135,17 @@ begin
 																	  , pn_drawing_id        => gn$drawing_id
 																	  , pn_digit_pos         => 5														  
 																	  , pv_fre_IN	         => lv$fre_IN5
-																	  , pv_lt_IN		     => ltMaster.pos5
+																	  , pv_lt_IN		     => ltIN.lt5
 																	  , pv_ca			     => gv$ca5
 																	  , pv_decena            => gv$d5
 																	  , pv_next_decena       => gv$d6
-																	  , pv_conf_ppn          => NULL
+																	  , pv_conf_ppn          => ppn.pos5
 																	  , pv_qry_stmt   	     => gv$qry_stmt
 																	  , pv_qry_where_stmt    => gv$qry_where_stmt
 																	  , pv_qry_order_stmt    => gv$qry_order_stmt
 																	  , pv_numero_primo_list => lv$numero_primo_list
 																	  , pv_add_primo_enable  => pv_add_primo_enable
 																	  , pv_chng_posicion_pos => lv$chng_posicion_pos5
-																	  , pv_favorable_flag    => pv_favorable_flag_5
-																	  , pv_change_flag       => pv_change_flag_5
-																	  , pv_pxc_flag          => pv_pxc_flag_5
 																	  , xtbl_qry_output   	 => ltbl$list_array_pos5
 																	  , x_err_code    	  	 => x_err_code
 																	   );
@@ -8927,19 +8156,16 @@ begin
 																		  , pn_drawing_id        => gn$drawing_id
 																		  , pn_digit_pos         => 6														  
 																		  , pv_fre_IN	         => lv$fre_IN6
-																		  , pv_lt_IN		     => ltMaster.pos6
+																		  , pv_lt_IN		     => ltIN.lt6
 																		  , pv_ca			     => gv$ca6
 																		  , pv_decena            => gv$d6
-																		  , pv_conf_ppn          => NULL
+																		  , pv_conf_ppn          => ppn.pos6
 																		  , pv_qry_stmt   	     => gv$qry_stmt
 																		  , pv_qry_where_stmt    => gv$qry_where_stmt
 																		  , pv_qry_order_stmt    => gv$qry_order_stmt
 																		  , pv_numero_primo_list => lv$numero_primo_list
 																		  , pv_add_primo_enable  => pv_add_primo_enable
 																		  , pv_chng_posicion_pos => lv$chng_posicion_pos6
-																		  , pv_favorable_flag    => pv_favorable_flag_6
-																		  , pv_change_flag       => pv_change_flag_6
-																		  , pv_pxc_flag          => pv_pxc_flag_6
 																		  , xtbl_qry_output   	 => ltbl$list_array_pos6
 																		  , x_err_code    	  	 => x_err_code
 																		   );
@@ -9031,7 +8257,7 @@ begin
 																
 																	--!formando el query final
 																	olap_sys.w_common_pkg.g_dml_stmt  := gv$qry_stmt||' '||gv$qry_where_stmt; 
-																	 	ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt||'  1');   							
+																								
 																	--!ejecutar el panorama query para obtener los numeros a jugar
 																	run_panorama_query_rules(pv_drawing_type            => pv_drawing_type
 																						   , pn_drawing_id   			=> gn$drawing_id 
@@ -9047,10 +8273,22 @@ begin
 																						   , pv_digit_list_pos5   		=> lv$digit_list_pos5
 																						   , pv_digit_list_pos6   		=> lv$digit_list_pos6
 																						   , pn_process_id				=> ln$process_id
-																						   , pv_in_extremos_list        => lv$in_extremos_list
-																						   , pn_consecutivos_cnt		=> pn_consecutivos_cnt
 																						   , x_err_code      	   		=> x_err_code
-																							); 				
+																							); 			
+
+																	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then																										
+																		--!proceso principal que aplicara validaciones adicionales a las jugadas finales
+																		extra_validations_handler (pv_drawing_type    => pv_drawing_type
+																								 , pn_drawing_case	  => pn_drawing_case
+																								 , pn_drawing_id   	  => gn$drawing_id 																			
+																								 --!validacion comb_sum
+																								 , pv_val_sum_enable  => pv_val_sum_enable
+																								 --!validacion gl ca
+																								 , pv_val_ca_enable   => pv_val_ca_enable  
+																								 , x_err_code         => x_err_code							 
+																								  );
+																							  
+																	end if;			
 																end if;																																																					
 															end if;
 														end if;					
@@ -9062,43 +8300,18 @@ begin
 								end if;
 							end if;
 						end if;
-					--end loop;
+					end loop;
 					end loop;	
-				--end loop;				
+				end loop;				
 			end if;		
 		end if;					
 	end if;	
---	dbms_output.put_line('lv$not_null_columns: '||lv$not_null_columns);
---	dbms_output.put_line('lv$null_columns: '||lv$null_columns); 
- --   if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then																										
-        --!proceso principal que aplicara validaciones adicionales a las jugadas finales
-        extra_validations_handler (pv_drawing_type    => pv_drawing_type
-                                 , pn_drawing_case	  => pn_drawing_case
-                                 , pn_drawing_id   	  => gn$drawing_id 																			
-                                 --!validacion comb_sum
-                                 , pv_val_sum_enable  => pv_val_sum_enable
-                                 --!validacion gl ca
-                                 , pv_val_ca_enable   => pv_val_ca_enable  
-                                 --!validacion numeros primos
-                                 , pv_val_primos_enable   => pv_val_primos_enable
-                                 --!validacion extremos
-                                 , pv_val_extremos_enable => pv_val_extremos_enable
-                                 --!validacion de posiciones sin cambio
-                                 , pv_val_pos_sin_cambio_enable => pv_val_pos_sin_cambio_enable
-                                 , pv_not_null_columns => lv$not_null_columns	
-                                 , pv_null_columns => lv$null_columns                                                                                               
-                                 , x_err_code         => x_err_code							 
-                                  );																							  
---    end if;		
-    
 	commit;
 	dbms_output.put_line(chr(10)||'$$$EXITO$$$$DINERO$$$$GANO$PREMIO$1ER$LUGAR$MELATE$RETRO$$$COBRO$DINERO$$$INVERTO$DINERO$$$');							
 	dbms_output.put_line('Siguiente sorteo: '||ln$next_drawing_id);
 	dbms_output.put_line('Drawing Case: '||pn_drawing_case);
 	dbms_output.put_line('Diferencia Tipo: '||pn_diferencia_tipo);
 	dbms_output.put_line('Execution Type: '||pv_execution_type);
-	dbms_output.put_line('#Consecutivos: '||pn_consecutivos_cnt);
-	dbms_output.put_line('#Terminaciones: '||pn_term_cnt);
 	dbms_output.put_line(' ');
 	
 	if pv_execution_type = CV$PANORAMA then
@@ -9192,6 +8405,27 @@ procedure configura_posicion_ult_sorteo(pv_drawing_type             VARCHAR2
 								      , x_err_code    IN OUT NOCOPY NUMBER								 
 								       ) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'configura_posicion_ult_sorteo';
+	
+	--!cursor para recuperar los rangos de la decena por posicion
+	cursor c_decena_rango (pv_drawing_type             VARCHAR2
+					     , pn_drawing_case             NUMBER) is
+	select to_number(substr(pos1,1,instr(pos1,'-',1,1)-1)) pos11
+		 , to_number(substr(pos1,instr(pos1,'-',1,1)+1)) pos12
+		 , to_number(substr(pos2,1,instr(pos2,'-',1,1)-1)) pos21
+		 , to_number(substr(pos2,instr(pos2,'-',1,1)+1)) pos22
+		 , to_number(substr(pos3,1,instr(pos3,'-',1,1)-1)) pos31
+		 , to_number(substr(pos3,instr(pos3,'-',1,1)+1)) pos32
+		 , to_number(substr(pos4,1,instr(pos4,'-',1,1)-1)) pos41
+		 , to_number(substr(pos4,instr(pos4,'-',1,1)+1)) pos42
+		 , to_number(substr(pos5,1,instr(pos5,'-',1,1)-1)) pos51
+		 , to_number(substr(pos5,instr(pos5,'-',1,1)+1)) pos52
+		 , to_number(substr(pos6,1,instr(pos6,'-',1,1)-1)) pos61
+		 , to_number(substr(pos6,instr(pos6,'-',1,1)+1)) pos62
+	  from olap_sys.plan_jugadas
+	 where drawing_type = pv_drawing_type
+	   and description  = 'DECENAS'
+	   and status       = 'A'
+	   and drawing_case = pn_drawing_case;   
 begin
    if GB$SHOW_PROC_NAME then
 		dbms_output.put_line('--------------------------------');
@@ -10152,7 +9386,7 @@ begin
 								, x_err_code 	=> x_err_code);
 								
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							
-		for k in 1..7 loop
+		for k in 1..6 loop
 			--!proceso calcular el contador del ranking de la decena
 			calcula_contador_ranking (pn_decena_rank => k
 									, x_err_code=> x_err_code);	
@@ -10314,12 +9548,11 @@ exception
     raise;   
 end limpiar_plan_jugadas_handler;
 
-				  
+
 --!proceso para imprimir los resultados de los conteos
 procedure imprimir_resultados (pn_master_id				    NUMBER
 							 , pn_drawing_id				NUMBER
 							 , pv_gl_type					VARCHAR2
-							 , pv_insert_allowed_flag       VARCHAR2
 						     , x_err_code     IN OUT NOCOPY NUMBER
 						      ) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'imprimir_resultados';
@@ -10327,11 +9560,10 @@ procedure imprimir_resultados (pn_master_id				    NUMBER
   lv$b_type_prev				   varchar2(5);	
   ln$lt_prev_cnt				   number := 0;
   ln$lt_curr_cnt				   number := 0;
---  pragma autonomous_transaction;
-  
+
 	cursor c_sorteo (pn_master_id				NUMBER
 				   , pn_drawing_id				NUMBER) is
-	select distinct gl_type
+	select gl_type
 	     , drawing_id_ini drawing_id_ini
 		 , b_type_ini
 		 , decode(gl_color_ini,1,'R',2,'G',3,'B',0,' ') gl_color_ini
@@ -10345,9 +9577,8 @@ procedure imprimir_resultados (pn_master_id				    NUMBER
                 when gl_cnt_end <= 1 and gl_output != '<' then 'war2' 
 				when gl_cnt_end <= 2 and gl_output = '<' then 'war3' 
 				when gl_cnt_end <= 2 and gl_output != '<' then 'war4' end flag
-		 , seq_no		
 	  from olap_sys.s_gl_mapas_fre_lt_cnt 
-	 where drawing_id_end = pn_drawing_id
+	 where drawing_id_ini = pn_drawing_id
 	   and gl_type        = pv_gl_type
 	 order by seq_no;  
 begin
@@ -10371,8 +9602,9 @@ begin
 					  ||' '||w.gl_color_end 
 					  ||' '||w.gl_cnt_end 
 					  ||' '||w.gl_output
-					  ||' '||w.flag); 					   				 
+					  ||' '||w.flag); 
 	end loop;
+
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
@@ -10387,8 +9619,8 @@ procedure upd_s_gl_mapas_fre_lt_cnt (pn_master_id				  NUMBER
 								   , x_err_code     IN OUT NOCOPY NUMBER
 									) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_s_gl_mapas_fre_lt_cnt';
-  ln$drawing_id_ini				   number := pn_drawing_id - 1;	
-  ln$drawing_id_end				   number := pn_drawing_id;
+  ln$drawing_id_ini				   number := pn_drawing_id;	
+  ln$drawing_id_end				   number := pn_drawing_id + 1;
   
 	cursor c_main (pn_drawing_id	  NUMBER) is
 	select b_type
@@ -10423,39 +9655,17 @@ procedure upd_s_gl_mapas_fre_lt_cnt (pn_master_id				  NUMBER
 
 	cursor c_output (pn_master_id			  NUMBER
 				   , pn_drawing_id			  NUMBER) is
-	 select master_id
-	      , gl_type
-		  , seq_no
-		  , drawing_id_end
-		  , gl_cnt_ini
-		  , gl_cnt_end
-		  , case when gl_cnt_end > gl_cnt_ini then '>' else case when gl_cnt_end = gl_cnt_ini then '=' else '<' end end gl_output
+	 select master_id, gl_type, seq_no, drawing_id_end, gl_cnt_ini, gl_cnt_end, case when gl_cnt_end > gl_cnt_ini then '>' else case when gl_cnt_end = gl_cnt_ini then '=' else '<' end end gl_output
 	  from olap_sys.s_gl_mapas_fre_lt_cnt 
 	 where master_id 	  = pn_master_id  
 	   and drawing_id_end = pn_drawing_id
-     for update; 	
+     for update; 
 
-    cursor c_rank (pn_drawing_id			  NUMBER) is
-	select drawing_id_end 
-		 , b_type_end 
-		 , seq_no
-		 , gl_color_end
-		 , gl_cnt_end
-		 , dense_rank() over (partition by drawing_id_ini, b_type_ini order by gl_cnt_ini, seq_no) as rank_cnt_ini
-		 , dense_rank() over (partition by drawing_id_end, b_type_end order by gl_cnt_end, seq_no) as rank_cnt_end
-	  from olap_sys.s_gl_mapas_fre_lt_cnt
-	 where gl_color_end in (1,2,3)
-	   and drawing_id_end = pn_drawing_id;
-
-	cursor c_resultados (pn_drawing_id	  NUMBER) is
-	select drawing_id
-	     , b_type
-		 , color_ley_tercio lt
-		 , winner_flag
-	  from olap_sys.s_calculo_stats
-	 where winner_flag is not null
-	   and drawing_id = pn_drawing_id;
-  
+	cursor c_anterior (pn_drawing_id   number) is
+	select distinct drawing_id_end, b_type_end, gl_color_end, predicted_manual_end, predicted_flag_end, winner_flag_end
+	  from olap_sys.s_gl_mapas_fre_lt_cnt 
+	 where gl_type = 'LT'
+       and drawing_id_end = pn_drawing_id;	 
 begin
 	if GB$SHOW_PROC_NAME then
 		dbms_output.put_line('--------------------------------');
@@ -10467,14 +9677,8 @@ begin
 
 	--!sorteo actual
 	--!actualizando contadores por cada b_type
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('c_main => ln$drawing_id_ini: '||ln$drawing_id_ini);
-		dbms_output.put_line('--------------------------------');
-	end if;	
 	for t in c_main (pn_drawing_id => ln$drawing_id_ini) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line(t.b_type||' | '||t.lt||' | '||t.cnt);
-		end if;	
+--		dbms_output.put_line(t.b_type||' | '||t.lt||' | '||t.cnt);
 		update olap_sys.s_gl_mapas_fre_lt_cnt
 		   set gl_cnt_ini     = t.cnt
 		 where master_id      = pn_master_id
@@ -10485,15 +9689,9 @@ begin
 	end loop;
 
 	--!actualizando totales para cada b_type
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('c_actual => ln$drawing_id_ini: '||ln$drawing_id_ini);
-		dbms_output.put_line('--------------------------------');
-	end if;	
 	for k in c_actual (pn_master_id  => pn_master_id
 					   , pn_drawing_id => ln$drawing_id_ini) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line(k.master_id||' | '||k.gl_type||' | '||k.drawing_id_ini||' | '||k.b_type_ini||' | '||k.sum_cnt_ini);
-		end if;			
+--		dbms_output.put_line(k.master_id||' | '||k.gl_type||' | '||k.drawing_id_ini||' | '||k.b_type_ini||' | '||k.sum_cnt_ini);
 		update olap_sys.s_gl_mapas_fre_lt_cnt
 		   set gl_color_ini   = 0
 		     , gl_cnt_ini     = k.sum_cnt_ini
@@ -10506,14 +9704,8 @@ begin
 	
 	--!sorteo siguiente
 	--!actualizando contadores por cada b_type
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('c_main => ln$drawing_id_end: '||ln$drawing_id_end);
-		dbms_output.put_line('--------------------------------');
-	end if;		
 	for t in c_main (pn_drawing_id => ln$drawing_id_end) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line(t.b_type||' | '||t.lt||' | '||t.cnt);
-		end if;				
+--		dbms_output.put_line(t.b_type||' | '||t.lt||' | '||t.cnt);
 		update olap_sys.s_gl_mapas_fre_lt_cnt
 		   set gl_cnt_end     = t.cnt
 		 where master_id      = pn_master_id
@@ -10524,15 +9716,9 @@ begin
 	end loop;
 
 	--!actualizando totales para cada b_type
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('c_siguiente => ln$drawing_id_end: '||ln$drawing_id_end);
-		dbms_output.put_line('--------------------------------');
-	end if;	
 	for q in c_siguiente (pn_master_id  => pn_master_id
 				        , pn_drawing_id => ln$drawing_id_end) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line(q.master_id||' | '||q.gl_type||' | '||q.drawing_id_end||' | '||q.b_type_end||' | '||q.sum_cnt_end);
-		end if;	
+--		dbms_output.put_line(q.master_id||' | '||q.gl_type||' | '||q.drawing_id_end||' | '||q.b_type_end||' | '||q.sum_cnt_end);
 		update olap_sys.s_gl_mapas_fre_lt_cnt
 		   set gl_color_end   = 0
 		     , gl_cnt_end     = q.sum_cnt_end
@@ -10543,10 +9729,6 @@ begin
 	end loop;
 
 	--!identificando si los contadores de la jugada actual son mayores, iguales o menores
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('c_output => ln$drawing_id_end: '||ln$drawing_id_end);
-		dbms_output.put_line('--------------------------------');
-	end if;	
 	for a in c_output (pn_master_id  => pn_master_id
 				     , pn_drawing_id => ln$drawing_id_end) loop
 		update olap_sys.s_gl_mapas_fre_lt_cnt
@@ -10557,26 +9739,17 @@ begin
 		   and seq_no     	  = a.seq_no;					 
 	end loop;			 
 
-	--!setear el ranking de cada rehlon en base a b_type
-	for d in c_rank (pn_drawing_id => ln$drawing_id_end) loop
-		update olap_sys.s_gl_mapas_fre_lt_cnt
-		   set gl_cnt_ini_rank = d.rank_cnt_ini
-		     , gl_cnt_end_rank = d.rank_cnt_end
-		 where drawing_id_end = d.drawing_id_end
-		   and b_type_end = d.b_type_end 
-		   and seq_no = d.seq_no
-		   and gl_color_end = d.gl_color_end
-		   and gl_cnt_end = d.gl_cnt_end;  
-	end loop;
+    for k in  c_anterior (pn_drawing_id => ln$drawing_id_ini) loop
+        update olap_sys.s_gl_mapas_fre_lt_cnt 
+           set predicted_manual_ini = k.predicted_manual_end
+             , predicted_flag_ini = k.predicted_flag_end
+             , winner_flag_ini = k.winner_flag_end
+         where gl_type = 'LT'
+           and drawing_id_ini = k.drawing_id_end
+           and b_type_ini = k.b_type_end
+           and gl_color_ini = k.gl_color_end;
+    end loop;
 	
-	--!marcar las jugadas ganadoras
-	for r in c_resultados (pn_drawing_id => ln$drawing_id_ini) loop
-		update olap_sys.s_gl_mapas_fre_lt_cnt
-		   set winner_flag_end = r.winner_flag
-		 where drawing_id_ini = r.drawing_id
-		   and b_type_end = r.b_type
-		   and gl_color_end = r.lt; 	
-	end loop;
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
 exception
   when others then
@@ -10594,8 +9767,8 @@ procedure ins_s_gl_mapas_fre_lt_cnt(pv_gl_type                  VARCHAR2 DEFAULT
   LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_s_gl_mapas_fre_lt_cnt';
   CV$INS_STMT			  constant varchar2(500):= 'INSERT INTO OLAP_SYS.S_GL_MAPAS_FRE_LT_CNT (MASTER_ID,GL_TYPE,SEQ_NO,DRAWING_ID_INI,B_TYPE_INI,GL_COLOR_INI,GL_CNT_INI,DRAWING_ID_END,B_TYPE_END,GL_COLOR_END,GL_CNT_END,GL_OUTPUT) VALUES (';
   ln$seq_no						   number := 1;  
-  ln$drawing_id_ini				   number := pn_drawing_id - 1;	
-  ln$drawing_id_end				   number := pn_drawing_id;
+  ln$drawing_id_ini				   number := pn_drawing_id;	
+  ln$drawing_id_end				   number := pn_drawing_id + 1;
   ln$b_type_cnt					   number := 1;
   ln$gl_color_cnt 				   number := 1;		
 begin
@@ -10645,10 +9818,6 @@ begin
 
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
 exception
-  when dup_val_on_index then
-	dbms_output.put_line('Borrando valor duplicado en tabla olap_sys.s_gl_mapas_fre_lt_cnt. Intente de nuevo ...');
-	delete olap_sys.s_gl_mapas_fre_lt_cnt
-     where drawing_id_end = pn_drawing_id;
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
@@ -10661,7 +9830,6 @@ procedure generar_lt_counts_handler (pv_drawing_type			  VARCHAR2 DEFAULT 'mrtr'
 								   , pn_drawing_id				  NUMBER
 								   , pv_gl_type					  VARCHAR2 DEFAULT 'LT' 
 								   , pv_resultado_type			  VARCHAR2 DEFAULT 'PREV'
-								   , pv_insert_allowed_flag		  VARCHAR2 DEFAULT 'Y'
 								   , x_err_code     IN OUT NOCOPY NUMBER) is
   LV$PROCEDURE_NAME       constant varchar2(30) := 'generar_lt_counts_handler';
   ln$master_id					   number := 0;
@@ -10678,6 +9846,7 @@ begin
 		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
 		dbms_output.put_line('pv_gl_type: '||pv_gl_type);		
 	end if; 
+	dbms_output.put_line('--------------------------------');
 
 	if pn_drawing_id = 0 then
 		--!recuperar el ID ultimo sorteo
@@ -10703,35 +9872,30 @@ begin
 	ln$master_id := olap_sys.w_common_pkg.get_gl_mapa_master_id (pn_xrownum    => 1
 															   , pn_seq_no	   => 1
 															   , pn_drawing_id => ln$sorteo);
-	
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line('ln$master_id: '||ln$master_id);
-		dbms_output.put_line('ln$sorteo: '||ln$sorteo);
-	end if;
+--	dbms_output.put_line('ln$master_id: '||ln$master_id);
 	
 	--!insertar registros dummy en la tabla s_gl_mapas_fre_lt_cnt
 	ins_s_gl_mapas_fre_lt_cnt(pn_master_id  => ln$master_id
-							, pn_drawing_id	=> ln$sorteo_actual
+							, pn_drawing_id	=> ln$sorteo
 						    , x_err_code    => x_err_code
 						     );
 
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 			--!proceso para actualizar informacion en la tabla s_gl_mapas_fre_lt_cnt
 			upd_s_gl_mapas_fre_lt_cnt (pn_master_id	 => ln$master_id
-								     , pn_drawing_id => ln$sorteo_actual
+								     , pn_drawing_id => ln$sorteo
 								     , x_err_code    => x_err_code
 									  );
 			if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then	
 				--!proceso para imprimir los resultados de los conteos
 				imprimir_resultados (pn_master_id  => ln$master_id
-								   , pn_drawing_id => ln$sorteo_actual
+								   , pn_drawing_id => ln$sorteo_previo --ln$sorteo
 								   , pv_gl_type    => pv_gl_type
-								   , pv_insert_allowed_flag => pv_insert_allowed_flag
 								   , x_err_code    => x_err_code
 								    );
 			end if;										
 	end if;
-	commit;
+
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
@@ -11410,11 +10574,10 @@ begin
 	   where rownum <= pn_rownum;
 
 	if xtbl_last_pattern.count > 0 then
---		dbms_output.put_line('paso 100');
 		--!funcion para recuperar el master_id existente o uno nuevo en based a una nueva secuencia
 		xn_master_id := get_master_id (pv_gl_type   => pv_gl_type
 									 , pn_drawing_id => pn_drawing_id);		
-	
+		
 		--dbms_output.put_line('xtbl_last_pattern.count: '||xtbl_last_pattern.count);
 		for i in xtbl_last_pattern.first..xtbl_last_pattern.last loop
 			--dbms_output.put_line(xn_master_id||'  '||pv_gl_type||'  '||pn_rownum||'  '||i||'  '||xtbl_last_pattern(i).drawing_id||'  '||xtbl_last_pattern(i).gl1||'  '||xtbl_last_pattern(i).gl2||'  '||xtbl_last_pattern(i).gl3||'  '||xtbl_last_pattern(i).gl4||'  '||xtbl_last_pattern(i).gl5||'  '||xtbl_last_pattern(i).gl6);
@@ -11438,7 +10601,7 @@ begin
 			end if;	
 		end loop;
 		--x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
-		
+
 		--!insertar registros dummy para actualizar la info posteriormente
 		ins_dummy_s_gl_mapas_cnt(pv_gl_type	    => pv_gl_type
 							   , pn_xrownum	    => pn_rownum
@@ -12837,13 +12000,14 @@ begin
 		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);		
 		dbms_output.put_line('pv_auto_commit: '||pv_auto_commit);		
 		dbms_output.put_line('pv_get_resultado: '||pv_get_resultado);		
-		dbms_output.put_line('pv_insert_pattern: '||pv_insert_pattern);		
+		dbms_output.put_line('pv_insert_pattern: '||pv_insert_pattern);	
+		dbms_output.put_line('pv_resultado_type: '||pv_resultado_type);			
 	end if;
 
 	ln$sorteo_actual := pn_drawing_id;
 	--!sorteo previo
 	if pv_resultado_type = 'PREV' then
-		ln$sorteo_previo := pn_drawing_id - 1;
+		ln$sorteo_previo := pn_drawing_id;
 		ln$sorteo        := ln$sorteo_previo;
 	--!sorteo actual
 	else 
@@ -12851,7 +12015,7 @@ begin
 	end if;
 		
 	if pv_insert_pattern = CV$ENABLE then
-		
+--dbms_output.put_line('xln$sorteo: '||ln$sorteo);		
 		--!proceso recuperas las ultimas n jugadas de los sorteos
 		get_last_pattern(pv_gl_type        => upper(pv_gl_type)
 					   , pn_rownum		   => pn_rownum
@@ -13030,21 +12194,28 @@ procedure get_frec_lt_count_wrapper(pn_drawing_id				   NUMBER DEFAULT NULL
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'get_frec_lt_count_wrapper';
 	lv$gl_type      varchar2(2); 
 begin
-	for p in 1..2 loop
+	/*for p in 1..2 loop
 		if p = 1 then lv$gl_type := 'FR'; else lv$gl_type := 'LT'; end if;
 		for t in 1..2 loop
-			olap_sys.w_new_pick_panorama_pkg.get_frec_lt_count_handler (pv_gl_type        => lv$gl_type
+			olap_sys.w_pick_panorama_pkg.get_frec_lt_count_handler (pv_gl_type        => lv$gl_type
 																  , pn_rownum	      => t
 																  , pn_drawing_id     => pn_drawing_id
 																  , pv_auto_commit    => 'N'
 																  , pv_insert_pattern => pv_insert_pattern
 																  , x_err_code        => x_err_code);
 		end loop;                                                              
-	end loop;   
+	end loop;*/  
+
+	olap_sys.w_pick_panorama_pkg.get_frec_lt_count_handler (pv_gl_type        => 'LT'
+														  , pn_rownum	      => 1
+														  , pn_drawing_id     => pn_drawing_id
+														  , pv_auto_commit    => 'N'
+														  , pv_insert_pattern => pv_insert_pattern
+														  , x_err_code        => x_err_code);
 	
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION and pv_insert_pattern = CV$ENABLE then
 		--!proceso para generar conteos de lt types para los dos ultimos sorteos
-		olap_sys.w_new_pick_panorama_pkg.generar_lt_counts_handler (pn_drawing_id => pn_drawing_id
+		olap_sys.w_pick_panorama_pkg.generar_lt_counts_handler (pn_drawing_id => pn_drawing_id
 															  , x_err_code    => x_err_code);  
 	end if;    
 exception
@@ -13053,37 +12224,6 @@ exception
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 	
 end get_frec_lt_count_wrapper;
-
---!procedimiento para insertar datos en la tabla header
-procedure ins_ley_tercio_history_header(pn_drawing_id			number
-									  , pv_lt1					varchar2
-									  , pv_lt2					varchar2
-									  , pv_lt3					varchar2
-									  , pv_lt4					varchar2
-									  , pv_lt5					varchar2
-									  , pv_lt6					varchar2) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_ley_tercio_history_header';							 
-begin
-	insert into olap_sys.ley_tercio_history_header(drawing_id
-												 , lt1
-												 , lt2
-												 , lt3
-												 , lt4
-												 , lt5
-												 , lt6)
-	values(pn_drawing_id
-		 , pv_lt1
-	     , pv_lt2
-		 , pv_lt3
-		 , pv_lt4
-		 , pv_lt5
-		 , pv_lt6);	 
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_ley_tercio_history_header;
 
 
 --!proceso recuperas las ultimas n jugadas de los sorteos
@@ -13108,6 +12248,7 @@ procedure get_last_pattern(pv_gl_type        			      VARCHAR2
 	select gambling_id, cu1, cu2, cu3, cu4, cu5, cu6, clt1, clt2, clt3, clt4, clt5, clt6
 	  from olap_sys.mr_resultados_summary
 	 where gambling_id  between pn_drawing_id_ini and pn_drawing_id_end 
+	 order by gambling_id desc 
 	) select gambling_id
 		   , decode(decode(pv_gl_type,'LT',clt1,cu1),1,'R',2,'G',3,'B','X') prn_gl1
 		   , decode(decode(pv_gl_type,'LT',clt2,cu2),1,'R',2,'G',3,'B','X') prn_gl2
@@ -13133,8 +12274,8 @@ begin
 	ln$drawing_id_ini := (pn_drawing_id - pn_rownum) + 1;
 	ln$drawing_id_end := pn_drawing_id;
 	
---	dbms_output.put_line('2.ln$drawing_id_ini: '||ln$drawing_id_ini);
---	dbms_output.put_line('2.ln$drawing_id_end: '||ln$drawing_id_end);
+--	dbms_output.put_line('2.xn_drawing_id_ini: '||xn_drawing_id_ini);
+--	dbms_output.put_line('2.xn_drawing_id_end: '||xn_drawing_id_end);
 
 	
 	olap_sys.w_common_pkg.g_index := 1;
@@ -13143,30 +12284,20 @@ begin
 						   , pn_drawing_id_ini => ln$drawing_id_ini
 						   , pn_drawing_id_end => ln$drawing_id_end
 						    ) loop
-		--!guadar en tabla
-		dbms_output.put_line(i.gambling_id||'|'||i.prn_gl1||'|'||i.prn_gl2||'|'||i.prn_gl3||'|'||i.prn_gl4||'|'||i.prn_gl5||'|'||i.prn_gl6);		
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).drawing_id := i.gambling_id;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos1 	  := i.gl1;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos2 	  := i.gl2;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos3 	  := i.gl3;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos4 	  := i.gl4;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos5 	  := i.gl5;
-		ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos6 	  := i.gl6;	
-		xn_drawing_id_search	              					      := i.gambling_id;		
+			dbms_output.put_line(i.gambling_id||'|'||i.prn_gl1||'|'||i.prn_gl2||'|'||i.prn_gl3||'|'||i.prn_gl4||'|'||i.prn_gl5||'|'||i.prn_gl6);		
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).drawing_id := i.gambling_id;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos1 	  := i.gl1;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos2 	  := i.gl2;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos3 	  := i.gl3;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos4 	  := i.gl4;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos5 	  := i.gl5;
+			ltbl$gl_pattern_tbl(olap_sys.w_common_pkg.g_index).pos6 	  := i.gl6;	
+			xn_drawing_id_search	              					      := i.gambling_id;		
 		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		
-		--!procedimiento para insertar datos en la tabla header
-		ins_ley_tercio_history_header(pn_drawing_id	=> i.gambling_id
-								    , pv_lt1 => i.prn_gl1
-								    , pv_lt2 => i.prn_gl2
-								    , pv_lt3 => i.prn_gl3
-								    , pv_lt4 => i.prn_gl4
-								    , pv_lt5 => i.prn_gl5
-								    , pv_lt6 => i.prn_gl6);
 	end loop;
 
 	--!estableciendo la jugada base para la busqueda
---	xn_drawing_id_search := xn_drawing_id_search - 1;
+	xn_drawing_id_search := xn_drawing_id_search - 1;
 --	dbms_output.put_line('xn_drawing_id_search: '||xn_drawing_id_search);
 	
 	--!almacenar los contadores en un arreglo
@@ -13216,14 +12347,11 @@ procedure load_history_mr_resultados (pv_gl_type					     VARCHAR2
 								     ) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'load_history_mr_resultados';	
 begin
---	if GB$SHOW_PROC_NAME then
+	if GB$SHOW_PROC_NAME then
 		dbms_output.put_line(LV$PROCEDURE_NAME);
 		dbms_output.put_line('pv_gl_type: '||pv_gl_type);
 		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
-		dbms_output.put_line('CV$ENABLE: '||CV$ENABLE);
-		dbms_output.put_line('CN$BASE_DRAWING_ID: '||CN$BASE_DRAWING_ID);
-		dbms_output.put_line('CN$DIFERENCIA: '||CN$DIFERENCIA);
---	end if;	
+	end if;	
 
 	--!calculado el rango de fecha de consulta
 	if pv_full_scan = CV$ENABLE then
@@ -13233,9 +12361,6 @@ begin
 		xn_drawing_id_ini := pn_drawing_id  - CN$DIFERENCIA;
 		xn_drawing_id_end := pn_drawing_id;
 	end if;
-
-	dbms_output.put_line('xn_drawing_id_ini: '||xn_drawing_id_ini);
-	dbms_output.put_line('xn_drawing_id_end: '||xn_drawing_id_end);
 		
 	select gambling_id
 		 , decode(pv_gl_type,'FR',cu1,clt1) pos1
@@ -13824,101 +12949,11 @@ exception
 end compute_drawing_avg;	
 
 
---!procedimiento para insertar datos en la tabla detail
-procedure ins_ley_tercio_history_dtl(pn_drawing_id			number
-							       , pv_b_type				varchar2
-							       , pv_lt					varchar2
-								   , pn_lt_cnt				number	
-								   , pn_drawing_id_ini		number
-								   , pn_drawing_id_end		number
-								   , pn_last_drawing_id_cnt number) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_ley_tercio_history_dtl';	
-begin
- 	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
-		dbms_output.put_line('pv_b_type: '||pv_b_type);
-		dbms_output.put_line('pv_lt: '||pv_lt);
-		dbms_output.put_line('pn_lt_cnt: '||pn_lt_cnt);
-		dbms_output.put_line('pn_drawing_id_ini: '||pn_drawing_id_ini);
-		dbms_output.put_line('pn_drawing_id_end: '||pn_drawing_id_end);
-		dbms_output.put_line('pn_last_drawing_id_cnt: '||pn_last_drawing_id_cnt);
-	end if;
-	
-	insert into olap_sys.ley_tercio_history_dtl(drawing_id
-											  , id
-											  , b_type
-											  , lt
-											  , lt_cnt
-											  , drawing_id_ini
-											  , drawing_id_end
-											  , last_drawing_id_cnt
-											  , last_drawing_id
-											  , next_drawing_id
-											  , lt_cnt_rank)
-	values(pn_drawing_id
-		 , (select nvl(max(id),0) + 1 from olap_sys.ley_tercio_history_dtl where drawing_id = pn_drawing_id and b_type = pv_b_type)
-	     , pv_b_type
-		 , pv_lt
-		 , pn_lt_cnt
-		 , pn_drawing_id_ini
-		 , pn_drawing_id_end
-		 , pn_last_drawing_id_cnt
-		 , pn_drawing_id-pn_last_drawing_id_cnt
-		 , pn_drawing_id+1
-		 , 0);	 
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_ley_tercio_history_dtl;
-
---!procedimiento para actualizar la columna rank_cnt en la tabla detail
-procedure upd_ley_tercio_history_dtl(pn_drawing_id			number) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_ley_tercio_history_dtl';	
-	cursor c_main (pn_drawing_id			number) is
-	select drawing_id 
-		 , b_type 
-		 , id
-		 , lt
-		 , lt_cnt
-		 , dense_rank() over (partition by drawing_id, b_type order by lt_cnt, id) as rank_cnt
-	  from olap_sys.ley_tercio_history_dtl
-	 where 1=1
-	   and lt in ('R','G','B')
-	   and drawing_id = pn_drawing_id 
-	 order by drawing_id desc, b_type, id;
-begin
- 	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-		dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
-	end if;
-	
-	for k in c_main (pn_drawing_id => pn_drawing_id) loop
-		update olap_sys.ley_tercio_history_dtl
-		   set lt_cnt_rank = k.rank_cnt
-		 where drawing_id = k.drawing_id 
-		   and b_type = k.b_type 
-		   and id = k.id
-		   and lt = k.lt;  
-	end loop;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end upd_ley_tercio_history_dtl;
-
-
 --!proceso para imprimir los resultados
-procedure print_output(pn_drawing_id				  NUMBER
-                     , pv_gl_type					  VARCHAR2
+procedure print_output(pv_gl_type					  VARCHAR2
 				     , pn_rownum					  NUMBER
 					  ) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'print_output';
-	ln$_err_code            number := 0;
-	
 	cursor c_template (pv_gl_type	VARCHAR2
 				     , pn_rownum	NUMBER) is
 	with output_tbl as (
@@ -14026,14 +13061,12 @@ procedure print_output(pn_drawing_id				  NUMBER
 	) where template_rank = 1
 	  order by sort_by;  
 begin
--- 	if GB$SHOW_PROC_NAME then
-	dbms_output.put_line(LV$PROCEDURE_NAME);
-	dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
---	end if;	
+ 	if GB$SHOW_PROC_NAME then
+		dbms_output.put_line(LV$PROCEDURE_NAME);
+	end if;	
 
 	for t in c_template (pv_gl_type	=> pv_gl_type
 				       , pn_rownum	=> pn_rownum) loop
-		--!este print no se necesita guardar en tabla
 		dbms_output.put_line(t.gl_type||'|'||t.xrownum||'|'||t.b_type||'|'||t.gl_color1||'|'||t.gl_color2||'|'||t.gl_cnt||'|||drawings: '||t.drawing_list);				
 		for tc in c_template_cnt (pn_template_id => t.template_id
 								, pv_gl_type	 => t.gl_type
@@ -14041,43 +13074,24 @@ begin
 						 
 		) loop
 			if tc.drawing_list is not null then
-				--!guardar en tabla
 				dbms_output.put_line('     |'||tc.b_type||'|'||tc.gl_color1||'|'||tc.gl_cnt||'|'||tc.drawing_id_ini||'|'||tc.drawing_id_end||'|'||tc.last_drawing_cnt||'|'||tc.drawing_waiting_avg||'|drawings: '||tc.drawing_list);	
 			else
 				dbms_output.put_line('     |'||tc.b_type||'|'||tc.gl_color1||'|'||tc.gl_cnt||'|'||tc.drawing_id_ini||'|'||tc.drawing_id_end||'|'||tc.last_drawing_cnt||'|'||tc.drawing_waiting_avg);			
-			end if;	
-
-			--!procedimiento para insertar datos en la tabla detail
-			ins_ley_tercio_history_dtl(pn_drawing_id => pn_drawing_id
-								    , pv_b_type => tc.b_type
-								    , pv_lt => tc.gl_color1
-								    , pn_lt_cnt => tc.gl_cnt	
-								    , pn_drawing_id_ini => tc.drawing_id_ini
-								    , pn_drawing_id_end => tc.drawing_id_end
-								    , pn_last_drawing_id_cnt => tc.last_drawing_cnt);	
+			end if;				   
 		end loop;
-	end loop;
-
-	--!procedimiento para actualizar la columna rank_cnt en la tabla detail
-	upd_ley_tercio_history_dtl(pn_drawing_id => pn_drawing_id);	
-	
-	--!proceso para generar conteos de lt types para los dos ultimos sorteos
-    generar_lt_counts_handler (pn_drawing_id     => pn_drawing_id
-						     , pv_resultado_type => 'CURR'
-						     , pv_insert_allowed_flag => 'Y'
-						     , x_err_code        => ln$_err_code); 
+	end loop;				   
 end print_output;
 
 	
 --!proceso para buscar patrones en el historico de mapas de conteo
-procedure search_pattern_wrapper(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
-							   , pn_drawing_id				    NUMBER
+procedure search_pattern_handler(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
+							   , pn_drawing_id				    NUMBER DEFAULT 0
 							   , pv_gl_type					    VARCHAR2 DEFAULT 'LT'
-							   , pn_rownum						NUMBER DEFAULT 1
+							   , pn_rownum						NUMBER DEFAULT 2
 							   , pv_full_scan			        VARCHAR2 DEFAULT 'N'
 							   , x_err_code       IN OUT NOCOPY NUMBER	
 								) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'search_pattern_wrapper';								
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'search_pattern_handler';								
 	ln$drawing_id			NUMBER := 0;
 	ln$drawing_id_search	NUMBER := 0;
 	ln$drawing_id_ini		NUMBER := 0;
@@ -14085,10 +13099,9 @@ procedure search_pattern_wrapper(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
 	ltbl$color_tbl		    gt$color_tbl;
 	ltbl$history_cnt_tbl	gt$history_cnt_tbl;
 begin
---	if GB$SHOW_PROC_NAME then
-	dbms_output.put_line(LV$PROCEDURE_NAME);
-	dbms_output.put_line('pn_drawing_id: '||pn_drawing_id);
---	end if;	
+	if GB$SHOW_PROC_NAME then
+		dbms_output.put_line(LV$PROCEDURE_NAME);
+	end if;	
 
 	if pn_drawing_id = 0 then
 		--!recuperar el ID ultimo sorteo
@@ -14096,9 +13109,7 @@ begin
 	else
 		ln$drawing_id := pn_drawing_id;
 	end if;
-
-	dbms_output.put_line('ln$drawing_id: '||ln$drawing_id);
-		
+	
 	--!proceso recuperas las ultimas n jugadas de los sorteos
 	get_last_pattern(pv_gl_type        	  => pv_gl_type
 				   , pn_rownum			  => pn_rownum
@@ -14109,7 +13120,7 @@ begin
 				    );
 --dbms_output.put_line('ln$drawing_id_search: '||ln$drawing_id_search);
 --dbms_output.put_line('ltbl$color_tbl.count: '||ltbl$color_tbl.count);
---dbms_output.put_line('x_err_code: '||x_err_code);
+
 	if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then	
 		--!funcion para recuperar el master_id de un patron de la tabla s_gl_mapas
 		load_history_mr_resultados (pv_gl_type			 => pv_gl_type
@@ -14122,7 +13133,6 @@ begin
 								   );
 --dbms_output.put_line('ln$drawing_id_ini: '||ln$drawing_id_ini);	
 --dbms_output.put_line('ln$drawing_id_end: '||ln$drawing_id_end);	
---dbms_output.put_line('x_err_code: '||x_err_code);
 		if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							  
 			--!procedimiento para encontrar patrones en los mapas y actualizar datos en la tabla
 			search_pattern_data (pv_gl_type		      => pv_gl_type
@@ -14132,28 +13142,23 @@ begin
 							   , ptbl_color_tbl  	  => ltbl$color_tbl
 							   , ptbl_history_cnt_tbl => ltbl$history_cnt_tbl
 							   , x_err_code           => x_err_code);
---dbms_output.put_line('paso 1');	
---dbms_output.put_line('x_err_code: '||x_err_code);							   
 			if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then			
 				--!procedimiento para calcular el total de sorteos por patron
 				compute_drawing_cnts(pv_gl_type	=> pv_gl_type
 								   , pn_rownum	=> pn_rownum
 								   , x_err_code => x_err_code);
---dbms_output.put_line('paso 2');	
---dbms_output.put_line('x_err_code: '||x_err_code);
+				
 				if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 					--!proceso para calcular el promedio de sorteos a esperar para que pase una ocurrencia
 					compute_drawing_avg (pv_gl_type	=> pv_gl_type
 									   , pn_rownum	=> pn_rownum
 									   , x_err_code => x_err_code); 
---dbms_output.put_line('paso 3');		
---dbms_output.put_line('x_err_code: '||x_err_code);
+					
 					if x_err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
+						commit;
 						--!proceso para imprimir los resultados
-						print_output(pn_drawing_id => ln$drawing_id
-						           , pv_gl_type => pv_gl_type
-								   , pn_rownum  => pn_rownum);
-						commit;								   
+						print_output(pv_gl_type => pv_gl_type
+								   , pn_rownum  => pn_rownum); 	   
 					end if;		   
 				end if;			   
 			end if;	
@@ -14164,44 +13169,12 @@ exception
 	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 	
-end search_pattern_wrapper;
-
---!proceso para buscar patrones en el historico de mapas de ley del tercio
-procedure search_pattern_handler(pv_drawing_type			    VARCHAR2 DEFAULT 'mrtr'
-							   , pn_drawing_id				    NUMBER
-							   , pv_gl_type					    VARCHAR2 DEFAULT 'LT'
-							   , pn_rownum						NUMBER DEFAULT 1
-							   , pv_full_scan			        VARCHAR2 DEFAULT 'N') is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'search_pattern_handler';
-    ln$err_code				number := 0;	
-begin
-
-	--!proceso para buscar patrones en el historico de mapas de conteo
-	search_pattern_wrapper(pv_drawing_type => pv_drawing_type
-					     , pn_drawing_id => pn_drawing_id
-					     , x_err_code => ln$err_code);
-	
-	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
-		update olap_sys.ley_tercio_history_dtl 
-		   set winner_flag = 'Y'
-		     , updated_date = SYSDATE
-		 where (drawing_id,b_type,lt) in (select drawing_id
-											   , b_type
-											   , decode(color_ley_tercio,1,'R',2,'G',3,'B') color_ley_tercio
-										    from olap_sys.s_calculo_stats
-										   where winner_flag is not null 
-										     and drawing_id = pn_drawing_id-1);
-	end if;	
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
 end search_pattern_handler;
 
 
 --!proceso para validar la repeticion de los patrones de la ley del tercio
 procedure validate_lt_pattern_history  is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'validate_lt_pattern_history';		
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'search_pattern_handler';		
 
 	cursor c_last_gamgling is
 	with max_id_tbl as (
@@ -14491,27 +13464,23 @@ end actualiza_tabla_contador;
 
 
 procedure actualiza_estadisticas(pn_primo_cnt		number
-							   , pn_drawing_id      number
-							   , pn_comb            number
-							   , pn_percentile      number) is
+							  , pn_drawing_id       number
+							  , pn_comb    number) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'actualiza_estadisticas';
 	ln$min_cnt				number := 0;
 	ln$avg_cnt				number := 0;
 	ln$max_cnt				number := 0;
 	ln$max_year				number := 0;
-	ln$percentile_cnt		number := 0;
 begin
 	--!calculando estadisticas
 	select min(rcnt)  min_cnt
 		 , round(avg(rcnt))  avg_cnt
 		 , max(rcnt)  max_cnt
 		 , max(ryear) max_year
-		 , percentile_disc(pn_percentile) within group (order by rcnt) per_cnt 
 	  into ln$min_cnt	
 		 , ln$avg_cnt
 		 , ln$max_cnt
 		 , ln$max_year
-		 , ln$percentile_cnt
 	  from olap_sys.pm_contador_digitos
 	 where rcnt > 0
 	   and rcomb = pn_comb;
@@ -14519,11 +13488,9 @@ begin
 	--!actualizando	info para todos los records		
 	update olap_sys.pm_contador_digitos
 	   set rcnt_min = ln$min_cnt
-		 --, rcnt_avg = ln$avg_cnt
-		 , rcnt_avg = ln$percentile_cnt
+		 , rcnt_avg = ln$avg_cnt
 		 , rcnt_max	= ln$max_cnt
-		 --, rcnt_dif = case when rcnt > 0 then ln$avg_cnt - rcnt end	
-         , rcnt_dif = case when rcnt > 0 then ln$percentile_cnt - rcnt end			 
+		 , rcnt_dif = case when rcnt > 0 then ln$avg_cnt - rcnt end				 
 	 where rprimos = pn_primo_cnt
 	   and rcomb   = pn_comb;	
 
@@ -14543,7 +13510,6 @@ end actualiza_estadisticas;
 --!calcula las estadisticas de digito para todos los anios
 procedure calcula_estadisticas (pn_primo_cnt		number
 							  , pn_drawing_id       number
-							  , pn_percentile       number
 							  , ptbl_inpar_par		DBMS_SQL.NUMBER_TABLE
 							  , ptbl_primos 		DBMS_SQL.NUMBER_TABLE
 							  , x_err_code       IN OUT NOCOPY NUMBER) is
@@ -14554,8 +13520,7 @@ begin
 		for r in ptbl_inpar_par.first..ptbl_inpar_par.last loop
 			actualiza_estadisticas(pn_primo_cnt	 => pn_primo_cnt
 							     , pn_drawing_id => pn_drawing_id
-							     , pn_comb       => ptbl_inpar_par(r)
-								 , pn_percentile => pn_percentile);
+							     , pn_comb       => ptbl_inpar_par(r));
 		end loop;
 	end if;   
 
@@ -14564,8 +13529,7 @@ begin
 		for q in ptbl_primos.first..ptbl_primos.last loop
 			actualiza_estadisticas(pn_primo_cnt	 => pn_primo_cnt
 							     , pn_drawing_id => pn_drawing_id
-							     , pn_comb       => ptbl_primos(q)
-								 , pn_percentile => pn_percentile);
+							     , pn_comb       => ptbl_primos(q));
 		end loop;
 	end if;   
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
@@ -14578,31 +13542,30 @@ end calcula_estadisticas;
 
 
 --!procedimiento para marcar los digitos que se encuentre por encima del valor del percentil
-procedure marca_numeros_para_jugar is
+procedure marca_numeros_para_jugar (pn_percentile    number
+                                  , pn_min_rcnt_dif  number) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'marca_numeros_para_jugar';
-	ln$per_rcnt_dif                  number:= 0;
-    
-	cursor c_main (pn_per_rcnt_dif  number) is
+	
+	cursor c_main (pn_percentile    number
+	             , pn_min_rcnt_dif  number) is
 	with max_year_tbl as (           
 	select max(ryear) max_ryear
 	  from olap_sys.pm_contador_digitos
-	) select * 
+	), percentil_tbl as (
+	select percentile_disc(pn_percentile) within group (order by rdrawing_id_dif) percentil
+	  from olap_sys.pm_contador_digitos
+	 where ryear = (select max_ryear from max_year_tbl)
+	   and rcnt > 0
+	) select *
 		from olap_sys.pm_contador_digitos
 	   where ryear = (select max_ryear from max_year_tbl)
-		 and rcnt > 0
-		 and rcnt_dif > pn_per_rcnt_dif
-		 for update; 		 
+		 and rcnt > 0 
+		 and rdrawing_id_dif > (select percentil from percentil_tbl)
+		 and rcnt_dif >= pn_min_rcnt_dif
+	     for update; 		 
 begin
-	with max_year_tbl as (           
-	select max(ryear) max_ryear
-	  from olap_sys.pm_contador_digitos
-	) select percentile_disc(0.25) within group (order by rcnt_dif) per_rcnt_dif 
-		into ln$per_rcnt_dif 
-        from olap_sys.pm_contador_digitos
-	   where ryear = (select max_ryear from max_year_tbl)
-		 and rcnt > 0; 
- dbms_output.put_line('ln$per_rcnt_dif :'||ln$per_rcnt_dif);      
-	for w in c_main (pn_per_rcnt_dif => ln$per_rcnt_dif) loop
+	for w in c_main (pn_percentile => pn_percentile
+	               , pn_min_rcnt_dif => pn_min_rcnt_dif) loop
 		update olap_sys.pm_contador_digitos
 		   set play_flag = CV$ENABLE
 		 where current of c_main;
@@ -14644,21 +13607,21 @@ begin
 	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then
 		actualiza_tabla_contador (pn_is_primo  => pn_is_primo
 								, x_err_code   => ln$err_code);	
-	
+		
 		if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then		
 			--!calcula las estadisticas de digito para todos los anios
 			calcula_estadisticas (pn_primo_cnt	 => pn_primo_cnt
 							    , pn_drawing_id  => gn$drawing_id
-								, pn_percentile  => pn_percentile
 								, ptbl_inpar_par => ltbl$inpar_par
 							    , ptbl_primos 	 => ltbl$primos
 							    , x_err_code     => ln$err_code);
 		
 			if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then			
 				--!procedimiento para marcar los digitos que se encuentre por encima del valor del percentil
-				marca_numeros_para_jugar;	
-			end if;							
-		end if;				  
+				marca_numeros_para_jugar (pn_percentile   => pn_percentile
+										, pn_min_rcnt_dif => pn_min_rcnt_dif);	
+			end if;								
+		end if;					  
 	end if;
 exception
   when others then
@@ -14666,70 +13629,19 @@ exception
     raise; 		
 end par_inpar_primo_cnt_handler;
 
---!valida que el patron del ley del tercio este en el rango indicado en la tabla S_GL_LEY_TERCIO_PATTERNS
-function is_ley_tercio_pattern (pv_drawing_type		VARCHAR2
-							  , pv_pos1				VARCHAR2
-							  , pv_pos2				VARCHAR2 DEFAULT NULL
-							  , pv_pos3				VARCHAR2 DEFAULT NULL
-							  , pv_pos4				VARCHAR2 DEFAULT NULL
-							  , pv_pos5				VARCHAR2 DEFAULT NULL
-							  , pv_pos6				VARCHAR2 DEFAULT NULL
-							  , pv_descripcion      VARCHAR2 DEFAULT 'LEY_TERCIO_IN'
-							  , pn_seq_ini		    NUMBER
-							  , pn_seq_end			NUMBER) return number is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'is_ley_tercio_pattern';
-begin
-	if pv_descripcion != 'LEY_TERCIO_IN' then
-		return 999;
-	else
-		select seq_no
-		  into olap_sys.w_common_pkg.g_rowcnt
-		  from olap_sys.s_gl_ley_tercio_patterns 
-		 where 1=1
-		   --!valores constantes
-		   and null_cnt  = 0
-		   and red_cnt   < 3
-		   and match_cnt = 0
-		   --!variables
-		   and seq_no between pn_seq_ini and pn_seq_end
-		   and lt1 = pv_pos1
-		   and lt2 = pv_pos2
-		   and lt3 = pv_pos3
-		   and lt4 = pv_pos4
-		   and lt5 = pv_pos5
-		   and lt6 = pv_pos6;
-		
-		return olap_sys.w_common_pkg.g_rowcnt;		   
-	end if;
-exception
-  when no_data_found then
-	return 0;
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise;	
-  when others then
-    return 0;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end is_ley_tercio_pattern;
-
 
 --!procedimiento para insertar registros en la tabla plan_jugada_details
 procedure ins_plan_jugada_details(pv_drawing_type		VARCHAR2
 								, pn_plan_jugada_id		NUMBER
 								, pv_pos1				VARCHAR2
-								, pv_pos2				VARCHAR2 DEFAULT NULL
-								, pv_pos3				VARCHAR2 DEFAULT NULL
-								, pv_pos4				VARCHAR2 DEFAULT NULL
-								, pv_pos5				VARCHAR2 DEFAULT NULL
-								, pv_pos6				VARCHAR2 DEFAULT NULL
-								, pv_descripcion        VARCHAR2 DEFAULT 'LEY_TERCIO_IN'
-								, pn_lt_pattern_id		NUMBER DEFAULT 0
-								, pn_seq_ini		    NUMBER
-								, pn_seq_end			NUMBER
-								, pn_paso				NUMBER DEFAULT 0
+								, pv_pos2				VARCHAR2
+								, pv_pos3				VARCHAR2
+								, pv_pos4				VARCHAR2
+								, pv_pos5				VARCHAR2
+								, pv_pos6				VARCHAR2
+								, pn_lt_pattern_id		NUMBER
 							 	 ) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_details';
-	ln$seq_no				number := -1;
 begin
 	if pv_pos1 is null and
 	   pv_pos2 is null and
@@ -14740,117 +13652,34 @@ begin
 		--!cuando todos las posiciones vengan nulos no se debe insertar ningun registro
 		null;
 	else
-		dbms_output.put_line('paso: '||pn_paso||' P1: '||pv_pos1||' P2: '||pv_pos2||' P3: '||pv_pos3||' P4: '||pv_pos4||' P5: '||pv_pos5||' P6: '||pv_pos6);
-		--!valida que el patron del ley del tercio este en el rango indicado en la tabla S_GL_LEY_TERCIO_PATTERNS
-		ln$seq_no := is_ley_tercio_pattern (pv_drawing_type => pv_drawing_type
-										  , pv_pos1		  => pv_pos1
-										  , pv_pos2		  => pv_pos2
-										  , pv_pos3		  => pv_pos3
-										  , pv_pos4		  => pv_pos4
-										  , pv_pos5		  => pv_pos5
-										  , pv_pos6		  => pv_pos6
-										  , pv_descripcion=> pv_descripcion
-										  , pn_seq_ini	  => pn_seq_ini
-										  , pn_seq_end	  => pn_seq_end);
-
-		--!valida que el patron del ley del tercio este en el rango indicado en la tabla S_GL_LEY_TERCIO_PATTERNS
-		if ln$seq_no > 0 then
-								
-			insert into olap_sys.plan_jugada_details (drawing_type
-													, plan_jugada_id
-													, id
-													, description
-													, pos1
-													, pos2
-													, pos3
-													, pos4
-													, pos5
-													, pos6
-													, lt_pattern_id
-													, seq_no
-													, created_by
-													, creation_date)
-			values (pv_drawing_type
-				  , pn_plan_jugada_id
-				  , (select nvl(max(id),0) + 1 from olap_sys.plan_jugada_details)
-				  , pv_descripcion
-				  , pv_pos1
-				  , pv_pos2
-				  , pv_pos3
-				  , pv_pos4
-				  , pv_pos5
-				  , pv_pos6
-				  , pn_lt_pattern_id
-				  , case when pv_descripcion = 'PATRON_TRES_NUMEROS' then to_number(pv_pos6) - to_number(pv_pos1) - 1 else ln$seq_no end
-				  , USER
-				  , SYSDATE);										
-			gn$ins_cnt := gn$ins_cnt + 1;
-		end if;
+		insert into olap_sys.plan_jugada_details (drawing_type
+												, plan_jugada_id
+												, id
+												, description
+												, pos1
+												, pos2
+												, pos3
+												, pos4
+												, pos5
+												, pos6
+												, lt_pattern_id
+												, created_by
+												, creation_date)
+		values (pv_drawing_type
+			  , pn_plan_jugada_id
+			  , (select nvl(max(id),0) + 1 from olap_sys.plan_jugada_details)
+			  , 'LEY_TERCIO_IN'
+			  , pv_pos1
+			  , pv_pos2
+			  , pv_pos3
+			  , pv_pos4
+			  , pv_pos5
+			  , pv_pos6
+			  , pn_lt_pattern_id
+			  , USER
+			  , SYSDATE);										
+		gn$ins_cnt := gn$ins_cnt + 1;
 	end if;	
-exception
-  when others then
-    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_plan_jugada_details;
-
---!procedimiento para insertar registros en la tabla plan_jugada_details
-procedure ins_plan_jugada_details(pv_drawing_type		VARCHAR2 DEFAULT 'mrtr'
-								, pn_plan_jugada_id		NUMBER
-								, pv_pos1				VARCHAR2
-								, pv_pos2				VARCHAR2 DEFAULT NULL
-								, pv_pos3				VARCHAR2 DEFAULT NULL
-								, pv_pos4				VARCHAR2 DEFAULT NULL
-								, pv_pos5				VARCHAR2 DEFAULT NULL
-								, pv_pos6				VARCHAR2 DEFAULT NULL
-								, pv_seq_no             VARCHAR2 DEFAULT NULL
-								, pv_descripcion        VARCHAR2 DEFAULT 'LEY_TERCIO_IN'
-								, pv_comments			VARCHAR2 DEFAULT NULL
-								, pv_sort_execution     VARCHAR2 DEFAULT NULL
-								, pv_flag1              VARCHAR2 DEFAULT NULL
-								, pn_jugadas_cnt        NUMBER DEFAULT NULL
-								, pn_resultados_cnt     NUMBER DEFAULT NULL
-							 	 ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_details';
-begin
-
-								
-	insert into olap_sys.plan_jugada_details (drawing_type
-											, plan_jugada_id
-											, id
-											, description
-											, pos1
-											, pos2
-											, pos3
-											, pos4
-											, pos5
-											, pos6
-											, seq_no
-											, comments
-											, sort_execution
-											, flag1
-											, jugadas_cnt
-											, resultados_cnt
-											, created_by
-											, creation_date)
-	values (pv_drawing_type
-		  , pn_plan_jugada_id
-		  , (select nvl(max(id),0) + 1 from olap_sys.plan_jugada_details)
-		  , pv_descripcion
-		  , pv_pos1
-		  , pv_pos2
-		  , pv_pos3
-		  , pv_pos4
-		  , pv_pos5
-		  , pv_pos6
-		  , pv_seq_no
-		  , pv_comments
-		  , pv_sort_execution
-		  , pv_flag1
-		  , pn_jugadas_cnt
-		  , pn_resultados_cnt
-		  , USER
-		  , SYSDATE);
-    gn$ins_cnt := gn$ins_cnt + 1;
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
@@ -14859,7 +13688,6 @@ end ins_plan_jugada_details;
 
 
 --!procedimiento para crear las combinaciones de datos a ser insertados en la tabla plan_jugada_details
---!PROCEDIMIENTO OBSOLETO
 procedure plan_jugada_dtl_handler(pv_drawing_type           VARCHAR2
 								, pn_drawing_case			NUMBER
 								, ptbl$pos1 				DBMS_SQL.VARCHAR2_TABLE
@@ -14868,8 +13696,6 @@ procedure plan_jugada_dtl_handler(pv_drawing_type           VARCHAR2
 								, ptbl$pos4 				DBMS_SQL.VARCHAR2_TABLE
 								, ptbl$pos5 				DBMS_SQL.VARCHAR2_TABLE
 								, ptbl$pos6 				DBMS_SQL.VARCHAR2_TABLE	
-								, pn_seq_ini				NUMBER
-								, pn_seq_end				NUMBER								
 								, x_err_code  IN OUT NOCOPY NUMBER		 								
 								) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'plan_jugada_dtl_handler';
@@ -14884,24 +13710,14 @@ procedure plan_jugada_dtl_handler(pv_drawing_type           VARCHAR2
 	lb$data_found			boolean := false;
 	
 	--!cursor para obtener el ID del patron LT del porcentaje
-	cursor c_patron_porcentajes (pv_drawing_type           VARCHAR2
-						       , pn_drawing_case			 NUMBER) is
+	cursor c_patrones_porcentajes (pv_drawing_type           VARCHAR2
+								 , pn_drawing_case			NUMBER) is
 	SELECT ID
 	  FROM OLAP_SYS.PLAN_JUGADAS
 	 WHERE DRAWING_TYPE = pv_drawing_type
 	   AND DESCRIPTION  = 'LT_PATRONES_PERCENTAGE'
 	   AND STATUS       = 'A'
 	   AND DRAWING_CASE = pn_drawing_case; 	
-
-	--!cursor para obtener el ID de cada decena
-	cursor c_decenas (pv_drawing_type           VARCHAR2
-					, pn_drawing_case			 NUMBER) is
-	SELECT ID
-	  FROM OLAP_SYS.PLAN_JUGADAS
-	 WHERE DRAWING_TYPE = pv_drawing_type
-	   AND DESCRIPTION  = 'DECENAS'
-	   AND STATUS       = 'A'
-	   AND DRAWING_CASE = pn_drawing_case; 		   
 begin
 	--!inicializando arreglos
 	--!POS1
@@ -14909,25 +13725,25 @@ begin
 	--!POS2
 	ltbl$pos2 := ptbl$pos2; 
 	--!POS3
-	ltbl$pos3 := ptbl$pos3; 	
+--	ltbl$pos3 := ltbl$pos3; 	
 	--!POS4
 	ltbl$pos4 := ptbl$pos4; 	
 	--!POS5
-	ltbl$pos5 := ptbl$pos5; 	
+--	ltbl$pos5 := ptbl$pos5; 	
 	--!POS6
 	ltbl$pos6 := ptbl$pos6; 
 
 	--!inicializando contador de inserts
 	gn$ins_cnt := 0;	
 	
-	for n in c_patron_porcentajes (pv_drawing_type => pv_drawing_type
-						         , pn_drawing_case => pn_drawing_case) loop
+	for n in c_patrones_porcentajes (pv_drawing_type => pv_drawing_type
+						           , pn_drawing_case => pn_drawing_case) loop
 		
 		ln$lt_pattern_id := n.id;
 		
 		--!recuperando las posiciones de los numeros primos
-		for t in c_decenas (pv_drawing_type => pv_drawing_type
-						  , pn_drawing_case => pn_drawing_case) loop
+		for t in c_conf_ppn (pv_drawing_type => pv_drawing_type
+						   , pn_drawing_case => pn_drawing_case) loop
 			
 			ln$plan_jugada_id := t.id;
 			
@@ -14952,10 +13768,7 @@ begin
 																				  , pv_pos4           => ltbl$pos4(p4)
 																				  , pv_pos5           => ltbl$pos5(p5)
 																				  , pv_pos6           => ltbl$pos6(p6)
-																				  , pn_lt_pattern_id  => ln$lt_pattern_id
-																				  , pn_seq_ini		  => pn_seq_ini
-																				  , pn_seq_end		  => pn_seq_end
-																				  , pn_paso           => 1);														
+																				  , pn_lt_pattern_id  => ln$lt_pattern_id);														
 														end loop;
 													--!POS6
 													else
@@ -14967,10 +13780,7 @@ begin
 																			  , pv_pos4           => ltbl$pos4(p4)
 																			  , pv_pos5           => ltbl$pos5(p5)
 																			  , pv_pos6           => NULL
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																			  
-																			  , pn_paso           => 2);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 													end if;												
 												end loop;
 											--!POS5
@@ -14985,10 +13795,7 @@ begin
 																			  , pv_pos4           => ltbl$pos4(p4)
 																			  , pv_pos5           => NULL
 																			  , pv_pos6           => ltbl$pos6(p6)
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																			  
-																			  , pn_paso           => 3);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 													end loop;
 												--!POS6
 												else
@@ -15000,10 +13807,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => NULL
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 4);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end if;												
 											end if;									
 										end loop;
@@ -15021,10 +13825,7 @@ begin
 																			  , pv_pos4           => NULL
 																			  , pv_pos5           => ltbl$pos5(p5)
 																			  , pv_pos6           => ltbl$pos6(p6)
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																				  
-																			  , pn_paso           => 5);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 													end loop;
 												--!POS6
 												else
@@ -15036,10 +13837,7 @@ begin
 																		  , pv_pos4           => NULL
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 6);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end if;												
 											end loop;
 										--!POS5
@@ -15054,10 +13852,7 @@ begin
 																		  , pv_pos4           => NULL
 																		  , pv_pos5           => NULL
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 7);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15069,10 +13864,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 8);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end if;									
 									end if;
@@ -15093,10 +13885,7 @@ begin
 																			  , pv_pos4           => ltbl$pos4(p4)
 																			  , pv_pos5           => ltbl$pos5(p5)
 																			  , pv_pos6           => ltbl$pos6(p6)
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																				  
-																			  , pn_paso           => 9);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);	
 													end loop;
 												--!POS6
 												else
@@ -15108,10 +13897,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 10);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end if;												
 											end loop;
 										--!POS5
@@ -15126,10 +13912,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => NULL
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 11);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15141,10 +13924,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 12);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end if;									
 									end loop;
@@ -15162,10 +13942,7 @@ begin
 																		  , pv_pos4           => NULL
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 13);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15177,10 +13954,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 14);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end loop;
 									--!POS5
@@ -15195,10 +13969,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 15);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 											end loop;
 										--!POS6
 										else
@@ -15210,10 +13981,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 16);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;												
 									end if;									
 								end if;						
@@ -15237,10 +14005,7 @@ begin
 																			  , pv_pos4           => ltbl$pos4(p4)
 																			  , pv_pos5           => ltbl$pos5(p5)
 																			  , pv_pos6           => ltbl$pos6(p6)
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																				  
-																			  , pn_paso           => 17);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 													end loop;
 												--!POS6
 												else
@@ -15252,10 +14017,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 18);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end if;												
 											end loop;
 										--!POS5
@@ -15270,10 +14032,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => NULL
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 19);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15285,10 +14044,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 20);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end if;									
 									end loop;
@@ -15306,10 +14062,7 @@ begin
 																		  , pv_pos4           => NULL
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 21);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15321,10 +14074,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 22);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end loop;
 									--!POS5
@@ -15339,10 +14089,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 23);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15354,10 +14101,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 24);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;												
 									end if;									
 								end if;
@@ -15378,10 +14122,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 25);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15393,10 +14134,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 26);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;												
 										end loop;
 									--!POS5
@@ -15411,10 +14149,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 27);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15426,10 +14161,7 @@ begin
 																  , pv_pos4           => ltbl$pos4(p4)
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 28);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);																				
 										end if;												
 									end if;									
 								end loop;
@@ -15447,10 +14179,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 29);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15462,10 +14191,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => ltbl$pos5(p5)
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 30);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 										end if;												
 									end loop;
 								--!POS5
@@ -15480,10 +14206,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => ltbl$pos6(p6)
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 31);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end loop;
 									--!POS6
 									else
@@ -15495,10 +14218,7 @@ begin
 															  , pv_pos4           => NULL
 															  , pv_pos5           => NULL
 															  , pv_pos6           => NULL
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 32);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);									
 									end if;												
 								end if;									
 							end if;						
@@ -15525,10 +14245,7 @@ begin
 																			  , pv_pos4           => ltbl$pos4(p4)
 																			  , pv_pos5           => ltbl$pos5(p5)
 																			  , pv_pos6           => ltbl$pos6(p6)
-																			  , pn_lt_pattern_id  => ln$lt_pattern_id
-																			  , pn_seq_ini		  => pn_seq_ini
-																			  , pn_seq_end		  => pn_seq_end																				  
-																			  , pn_paso           => 33);
+																			  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 													end loop;
 												--!POS6
 												else
@@ -15540,10 +14257,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => NULL
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 34);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end if;											
 											end loop;
 										--!POS5
@@ -15558,10 +14272,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => NULL
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 35);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 												end loop;
 											--!POS6
 											else
@@ -15573,10 +14284,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 36);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 											end if;																				
 										end if;									
 									end loop;
@@ -15594,10 +14302,7 @@ begin
 																		  , pv_pos4           => NULL
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 37);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);													
 												end loop;
 											--!POS6
 											else
@@ -15609,10 +14314,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 38);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;											
 										end loop;
 									--!POS5
@@ -15627,10 +14329,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 39);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15642,10 +14341,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 40);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;										
 									end if;								
 								end if;						
@@ -15666,10 +14362,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 41);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else	
@@ -15681,10 +14374,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 42);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;											
 										end loop;
 									--!POS5
@@ -15699,10 +14389,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 43);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 											end loop;
 										--!POS6
 										else	
@@ -15714,10 +14401,7 @@ begin
 																  , pv_pos4           => ltbl$pos4(p4)
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 44);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 										end if;									
 									end if;									
 								end loop;
@@ -15735,10 +14419,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 45);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15750,10 +14431,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => ltbl$pos5(p5)
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 46);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;											
 									end loop;
 								--!POS5
@@ -15768,10 +14446,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => ltbl$pos6(p6)
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 47);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end loop;
 									--!POS6
 									else
@@ -15783,10 +14458,7 @@ begin
 															  , pv_pos4           => NULL
 															  , pv_pos5           => NULL
 															  , pv_pos6           => NULL
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 48);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);									
 									end if;										
 								end if;								
 							end if;						
@@ -15810,10 +14482,7 @@ begin
 																		  , pv_pos4           => ltbl$pos4(p4)
 																		  , pv_pos5           => ltbl$pos5(p5)
 																		  , pv_pos6           => ltbl$pos6(p6)
-																		  , pn_lt_pattern_id  => ln$lt_pattern_id
-																		  , pn_seq_ini		  => pn_seq_ini
-																		  , pn_seq_end		  => pn_seq_end																			  
-																		  , pn_paso           => 49);
+																		  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 												end loop;
 											--!POS6
 											else
@@ -15825,10 +14494,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => NULL
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 50);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end if;										
 										end loop;
 									--!POS5
@@ -15843,10 +14509,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => NULL
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 51);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15858,10 +14521,7 @@ begin
 																  , pv_pos4           => ltbl$pos4(p4)
 																  , pv_pos5           => NULL
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 52);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;											
 									end if;								
 								end loop;
@@ -15879,10 +14539,7 @@ begin
 																	  , pv_pos4           => NULL
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 53);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);												
 											end loop;
 										--!POS6
 										else
@@ -15894,10 +14551,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => ltbl$pos5(p5)
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 54);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 										end if;										
 									end loop;
 								--!POS5
@@ -15912,10 +14566,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => NULL
 																  , pv_pos6           => ltbl$pos6(p6)
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 55);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 										end loop;
 									--!POS6
 									else
@@ -15927,10 +14578,7 @@ begin
 															  , pv_pos4           => NULL
 															  , pv_pos5           => NULL
 															  , pv_pos6           => NULL
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 56);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 									end if;											
 								end if;							
 							end if;				
@@ -15951,10 +14599,7 @@ begin
 																	  , pv_pos4           => ltbl$pos4(p4)
 																	  , pv_pos5           => ltbl$pos5(p5)
 																	  , pv_pos6           => ltbl$pos6(p6)
-																	  , pn_lt_pattern_id  => ln$lt_pattern_id
-																	  , pn_seq_ini		  => pn_seq_ini
-																	  , pn_seq_end		  => pn_seq_end																		  
-																	  , pn_paso           => 57);
+																	  , pn_lt_pattern_id  => ln$lt_pattern_id);											
 											end loop;
 										--!POS6
 										else
@@ -15966,10 +14611,7 @@ begin
 																  , pv_pos4           => ltbl$pos4(p4)
 																  , pv_pos5           => ltbl$pos5(p5)
 																  , pv_pos6           => NULL
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 58);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end if;										
 									end loop;
 								--!POS5
@@ -15984,10 +14626,7 @@ begin
 																  , pv_pos4           => ltbl$pos4(p4)
 																  , pv_pos5           => NULL
 																  , pv_pos6           => ltbl$pos6(p6)
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 59);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end loop;
 									--!POS6
 									else
@@ -15999,10 +14638,7 @@ begin
 															  , pv_pos4           => ltbl$pos4(p4)
 															  , pv_pos5           => NULL
 															  , pv_pos6           => NULL
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 60);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);									
 									end if;										
 								end if;									
 							end loop;
@@ -16020,10 +14656,7 @@ begin
 																  , pv_pos4           => NULL
 																  , pv_pos5           => ltbl$pos5(p5)
 																  , pv_pos6           => ltbl$pos6(p6)
-																  , pn_lt_pattern_id  => ln$lt_pattern_id
-																  , pn_seq_ini		  => pn_seq_ini
-																  , pn_seq_end		  => pn_seq_end																	  
-																  , pn_paso           => 61);
+																  , pn_lt_pattern_id  => ln$lt_pattern_id);										
 										end loop;
 									--!POS6
 									else
@@ -16035,10 +14668,7 @@ begin
 															  , pv_pos4           => NULL
 															  , pv_pos5           => ltbl$pos5(p5)
 															  , pv_pos6           => NULL
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 62);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);									
 									end if;										
 								end loop;
 							--!POS5
@@ -16053,10 +14683,7 @@ begin
 															  , pv_pos4           => NULL
 															  , pv_pos5           => NULL
 															  , pv_pos6           => ltbl$pos6(p6)
-															  , pn_lt_pattern_id  => ln$lt_pattern_id
-															  , pn_seq_ini		  => pn_seq_ini
-															  , pn_seq_end		  => pn_seq_end																  
-															  , pn_paso           => 63);
+															  , pn_lt_pattern_id  => ln$lt_pattern_id);									
 									end loop;
 								--!POS6
 								else
@@ -16068,10 +14695,7 @@ begin
 														  , pv_pos4           => NULL
 														  , pv_pos5           => NULL
 														  , pv_pos6           => NULL
-														  , pn_lt_pattern_id  => ln$lt_pattern_id
-														  , pn_seq_ini		  => pn_seq_ini
-														  , pn_seq_end		  => pn_seq_end															  
-														  , pn_paso           => 64);
+														  , pn_lt_pattern_id  => ln$lt_pattern_id);								
 								end if;										
 							end if;							
 						end if;
@@ -16091,6894 +14715,7 @@ exception
 	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 	
 end plan_jugada_dtl_handler;
-
-
---!funcion que valida que los tres numeros del patron coincidan con la posicion de la decena
-function is_contenido_jugada_valid(pn_pos1 					number
-							     , pn_pos2 					number
-							     , pn_pos3 					number
-							     , pn_pos4 					number
-							     , pn_pos5 					number
-							     , pn_pos6 					number
-							     , pn_decena1_pos1			number
-							     , pn_decena1_pos2			number
-							     , pn_decena2_pos1			number
-							     , pn_decena2_pos2			number
-							     , pn_decena3_pos1			number
-							     , pn_decena3_pos2			number
-							     , pn_decena4_pos1			number
-							     , pn_decena4_pos2			number
-							     , pn_decena5_pos1			number
-							     , pn_decena5_pos2			number
-							     , pn_decena6_pos1			number
-							     , pn_decena6_pos2			number
-					            ) return boolean is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'is_contenido_jugada_valid';
-	ln$success_cnt			number := 0;
-	ln$numero_cnt			number := 0;
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-		dbms_output.put_line('pn_pos1: '||pn_pos1);
-		dbms_output.put_line('pn_pos2: '||pn_pos2);
-		dbms_output.put_line('pn_pos3: '||pn_pos3);
-		dbms_output.put_line('pn_pos4: '||pn_pos4);
-		dbms_output.put_line('pn_pos5: '||pn_pos5);
-		dbms_output.put_line('pn_pos6: '||pn_pos6);
-		dbms_output.put_line('pn_decena1_pos1: '||pn_decena1_pos1);
-		dbms_output.put_line('pn_decena1_pos2: '||pn_decena1_pos2);
-		dbms_output.put_line('pn_decena2_pos1: '||pn_decena2_pos1);
-		dbms_output.put_line('pn_decena2_pos2: '||pn_decena2_pos2);
-		dbms_output.put_line('pn_decena3_pos1: '||pn_decena3_pos1);
-		dbms_output.put_line('pn_decena3_pos2: '||pn_decena3_pos2);
-		dbms_output.put_line('pn_decena4_pos1: '||pn_decena4_pos1);
-		dbms_output.put_line('pn_decena4_pos2: '||pn_decena4_pos2);
-		dbms_output.put_line('pn_decena5_pos1: '||pn_decena5_pos1);
-		dbms_output.put_line('pn_decena5_pos2: '||pn_decena5_pos2);
-		dbms_output.put_line('pn_decena6_pos1: '||pn_decena6_pos1);
-		dbms_output.put_line('pn_decena6_pos2: '||pn_decena6_pos2);	
-	end if;
-	
-	--!validando posicion 1
-	if pn_pos1 is not null then
-		if pn_pos1 between pn_decena1_pos1 and pn_decena1_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos1||' esta fuera de rango '||pn_decena1_pos1||' - '||pn_decena1_pos2);
-		end if;
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos1. ln$numero_cnt: '||ln$numero_cnt);
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-
-	--!validando posicion 2
-	if pn_pos2 is not null then	
-		if pn_pos2 between pn_decena2_pos1 and pn_decena2_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos2||' esta fuera de rango '||pn_decena2_pos1||' - '||pn_decena2_pos2);
-		end if;
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos2. ln$numero_cnt: '||ln$numero_cnt);		
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-	
-	--!validando posicion 3
-	if pn_pos3 is not null then	
-		if pn_pos3 between pn_decena3_pos1 and pn_decena3_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos3||' esta fuera de rango '||pn_decena3_pos1||' - '||pn_decena3_pos2);
-		end if;
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos3. ln$numero_cnt: '||ln$numero_cnt);			
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-	
-	--!validando posicion 4
-	if pn_pos4 is not null then		
-		if pn_pos4 between pn_decena4_pos1 and pn_decena4_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos4||' esta fuera de rango '||pn_decena4_pos1||' - '||pn_decena4_pos2);
-		end if;	
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos4. ln$numero_cnt: '||ln$numero_cnt);
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-	
-	--!validando posicion 5
-	if pn_pos5 is not null then	
-		if pn_pos5 between pn_decena5_pos1 and pn_decena5_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos5||' esta fuera de rango '||pn_decena5_pos1||' - '||pn_decena5_pos2);
-		end if;		
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos5. ln$numero_cnt: '||ln$numero_cnt);
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-	
-	--!validando posicion 6
-	if pn_pos6 is not null then	
-		if pn_pos6 between pn_decena6_pos1 and pn_decena6_pos2 then
-			ln$success_cnt := ln$success_cnt + 1;
-		else
-			dbms_output.put_line('digito '||pn_pos6||' esta fuera de rango '||pn_decena6_pos1||' - '||pn_decena6_pos2);
-		end if;		
-		ln$numero_cnt := ln$numero_cnt + 1;
-		dbms_output.put_line('pos6. ln$numero_cnt: '||ln$numero_cnt);
-	else
-		ln$success_cnt := ln$success_cnt + 1;
-	end if;
-dbms_output.put_line('ln$success_cnt: '||ln$success_cnt||', ln$numero_cnt: '||ln$numero_cnt);	
-	if ln$success_cnt = 6 and ln$numero_cnt = 3 then
-		return true;
-	else
-		return false;
-	end if;	
-exception
-  when others then
-	return false;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end is_contenido_jugada_valid;
-
-
---!procedimiento para crear patrones de jugadas basadas en tres numeros ser insertados en la tabla plan_jugada_details
---!ejecutado manualmente por medio de la informacion del tab PM_DIF_EXTREMOS
-procedure ins_plan_jugada_tres_handler(pn_drawing_case		NUMBER
-									 , pn_pos1 				NUMBER
-									 , pn_pos2 				NUMBER
-									 , pn_pos3 				NUMBER
-									 , pn_pos4 				NUMBER
-									 , pn_pos5 				NUMBER
-									 , pn_pos6 				NUMBER
-									 , pv_drawing_type      VARCHAR2 DEFAULT 'mrtr'
-									  ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_tres_handler';
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-	end if;
-	
-	--!cursor para recuperar los rangos de la decena por posicion
-	for d in c_decena_rango (pv_drawing_type => pv_drawing_type
-					       , pn_drawing_case => pn_drawing_case) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line('pn_drawing_case: '||pn_drawing_case||' dedena: '||d.pos11||'-'||d.pos12||' $ '||d.pos21||'-'||d.pos22||' $ '||d.pos31||'-'||d.pos32||' $ '||d.pos41||'-'||d.pos42||' $ '||d.pos51||'-'||d.pos52||' $ '||d.pos61||'-'||d.pos62);							   										   
-		end if;		
-		--!funcion que valida que los tres numeros del patron coincidan con la posicion de la decena
-		if is_contenido_jugada_valid(pn_pos1 		 => pn_pos1
-							       , pn_pos2 		 => pn_pos2
-							       , pn_pos3 		 => pn_pos3
-							       , pn_pos4 		 => pn_pos4
-							       , pn_pos5 		 => pn_pos5
-							       , pn_pos6 		 => pn_pos6
-							       , pn_decena1_pos1 => d.pos11
-							       , pn_decena1_pos2 => d.pos12
-							       , pn_decena2_pos1 => d.pos21
-							       , pn_decena2_pos2 => d.pos22
-							       , pn_decena3_pos1 => d.pos31
-							       , pn_decena3_pos2 => d.pos32
-							       , pn_decena4_pos1 => d.pos41
-							       , pn_decena4_pos2 => d.pos42
-							       , pn_decena5_pos1 => d.pos51
-							       , pn_decena5_pos2 => d.pos52
-							       , pn_decena6_pos1 => d.pos61
-							       , pn_decena6_pos2 => d.pos62
-					               ) then
-			ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-								  , pn_plan_jugada_id => d.id
-								  , pv_pos1           => pn_pos1
-								  , pv_pos2           => pn_pos2
-								  , pv_pos3           => pn_pos3
-								  , pv_pos4           => pn_pos4
-								  , pv_pos5           => pn_pos5
-								  , pv_pos6           => pn_pos6
-								  , pv_descripcion    => 'PATRON_TRES_NUMEROS'
-								  , pn_seq_ini		  => 0
-								  , pn_seq_end		  => 0);
-		end if;
-	end loop;
-	dbms_output.put_line(gn$ins_cnt||' rows inserted');
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_plan_jugada_tres_handler;
-
-
---!procedimiento para crear patrones de jugadas basadas en distancia de extremos a ser insertados en la tabla plan_jugada_details
---!ejecutado manualmente por medio de la informacion del tab PM_DIF_EXTREMOS
-procedure ins_plan_jugada_extr_handler(pn_drawing_case		NUMBER
-									 , pn_pos1 				NUMBER
-									 , pv_drawing_type      VARCHAR2 DEFAULT 'mrtr'
-									  ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_extr_handler';
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-	end if;
-	
-	--!cursor para recuperar los rangos de la decena por posicion
-	for d in c_decena_rango (pv_drawing_type => pv_drawing_type
-					       , pn_drawing_case => pn_drawing_case) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line('pn_drawing_case: '||pn_drawing_case||' extremo: '||pn_pos1);							   										   
-		end if;		
-			ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-								  , pn_plan_jugada_id => d.id
-								  , pv_pos1           => pn_pos1
-								  , pv_descripcion    => 'PATRON_DISTANCIA_EXTREMOS'
-								  , pn_seq_ini		  => 0
-								  , pn_seq_end		  => 0);
-	end loop;
-	dbms_output.put_line(gn$ins_cnt||' rows inserted');
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_plan_jugada_extr_handler;
-									  
-
---!funciona valida si la jugada contiene alguno de los patrones de basado en la distancia de extremos
---!FUNCION OBSOLETA
-function is_plan_jugada_extremo(pv_drawing_type		VARCHAR2
-						      , pn_drawing_case		NUMBER
-						      , pn_pos1 			NUMBER) return boolean is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'is_plan_jugada_extremo';
-begin
-	select count(1) cnt
-	  into olap_sys.w_common_pkg.g_data_found
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = CV$STATUS_ACTIVO
-	   and pj.status = CV$STATUS_ACTIVO
-	   and jd.pos1 = to_char(pn_pos1)
-	   and jd.description = 'PATRON_DISTANCIA_EXTREMOS'
-	   and pj.drawing_case= pn_drawing_case;  
-
-	if olap_sys.w_common_pkg.g_data_found = 0 then
-		return false;
-	else
-		return true;
-	end if;
-	
-exception
-  when others then
-	return false;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end is_plan_jugada_extremo;
-
---!popular arreglos con la configuracion para ejecutar el query que recuperara las jugadas
-procedure popular_arreglos(pn_drawing_case                      number
-                         , xtbl$jugada			IN OUT NOCOPY	gt$jugada_tbl
-						 , xtbl$jugada_tipos	IN OUT NOCOPY	gt$jugada_tipos_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'popular_arreglos';
-	ln$jugada_prioridad     number(1) := 1;
-begin
-	xtbl$jugada.delete;
-	xtbl$jugada_tipos.delete;
-	
-	if pn_drawing_case is not null then
-		--!prioridad 1
-		olap_sys.w_common_pkg.g_index := 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := pn_drawing_case;	
-	else
-		--!prioridad 1
-		olap_sys.w_common_pkg.g_index := 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 4;
-
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 5;
-		
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 6;
-		
-		--!prioridad 2
-		ln$jugada_prioridad := ln$jugada_prioridad + 1;
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 1;
-
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 2;
-
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 3;
-
-		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).jugada_prioridad := ln$jugada_prioridad;
-		xtbl$jugada(olap_sys.w_common_pkg.g_index).drawing_case := 7;		
-	end if;
-	
-	olap_sys.w_common_pkg.g_index := 1;
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).consecutivo := 'N';
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).terminacion_doble := 'N';
-
-	olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).consecutivo := 'N';
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).terminacion_doble := 'Y';
-
-	olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).consecutivo := 'Y';
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).terminacion_doble := 'N';
-
-	olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).consecutivo := 'Y';
-	xtbl$jugada_tipos(olap_sys.w_common_pkg.g_index).terminacion_doble := 'Y';	
-
-	for i in xtbl$jugada.first..xtbl$jugada.last loop
-		dbms_output.put_line(xtbl$jugada(i).jugada_prioridad||' - '||xtbl$jugada(i).drawing_case);
-	end loop;
-	dbms_output.put_line('----------------------------------------');
-	for j in xtbl$jugada_tipos.first..xtbl$jugada_tipos.last loop
-		dbms_output.put_line(xtbl$jugada_tipos(j).consecutivo||' - '||xtbl$jugada_tipos(j).terminacion_doble);
-	end loop;
-	dbms_output.put_line('----------------------------------------');	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end popular_arreglos;
-
-
---!proceso para insertar las jugadas previas en la tabla de interface
-procedure ins_gl_interface (pn_comb1				number
-					      , pn_comb2				number
-					      , pn_comb3				number
-					      , pn_comb4				number
-					      , pn_comb5				number
-					      , pn_comb6				number
-						  , pn_primo_cnt            number default 0
-						  , pn_inpar_cnt			number default 0
-						  , pn_par_cnt              number default 0
-						  , pn_consecutivo_cnt      number default 0
-						  , pv_terminacion			varchar2 default null
-						  , pn_drawing_case			number default 0
-						  , pn_sorteo_id			number default 0) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_gl_interface';						  
-begin
-	insert into olap_sys.gl_interface(gl_id,comb1,comb2,comb3,comb4,comb5,comb6, sorteo_id,jugar_flag,primo_cnt,inpar_cnt,par_cnt,consecutivos_cnt,terminacion_str,drawing_case)
-	values((select nvl(max(gl_id),0) + 1 from olap_sys.gl_interface)
-	     , pn_comb1
-		 , pn_comb2
-		 , pn_comb3
-		 , pn_comb4
-		 , pn_comb5
-		 , pn_comb6
-		 , pn_sorteo_id
-		 , 'X'
-		 , pn_primo_cnt
-		 , pn_inpar_cnt
-		 , pn_par_cnt
-		 , pn_consecutivo_cnt
-		 , pv_terminacion
-		 , pn_drawing_case);	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_gl_interface;
-
---!proceso para insertar las jugadas previas
-procedure ins_pm_gl_jugadas_previas (pn_jugada_prioridad	number
-								   , pn_comb1				number
-								   , pn_comb2				number
-								   , pn_comb3				number
-								   , pn_comb4				number
-								   , pn_comb5				number
-								   , pn_comb6				number
-								   , pv_lt1					varchar2
-								   , pv_lt2					varchar2
-								   , pv_lt3					varchar2
-								   , pv_lt4					varchar2
-								   , pv_lt5					varchar2
-								   , pv_lt6					varchar2
-								   , pv_sc1					varchar2
-								   , pv_sc2					varchar2
-								   , pv_sc3					varchar2
-								   , pv_sc4					varchar2
-								   , pv_sc5					varchar2
-								   , pv_sc6					varchar2
-								   , pv_pxc1				varchar2
-								   , pv_pxc2				varchar2
-								   , pv_pxc3				varchar2
-								   , pv_pxc4				varchar2
-								   , pv_pxc5				varchar2
-								   , pv_pxc6				varchar2
-								   , pn_sum_pxc				number
-								   , pn_none_cnt			number
-								   , pn_par_cnt				number
-								   , pn_ultimo_sorteo		number
-								   , pn_drawing_case		number
-								   , pv_consecutivos		varchar2
-								   , pv_terminacion_doble	varchar2
-								   , pv_nf1					varchar2
-								   , pv_nf2					varchar2
-								   , pv_nf3					varchar2
-								   , pv_nf4					varchar2
-								   , pv_nf5					varchar2
-								   , pv_nf6					varchar2
-								   , pn_sum_nf				number
-								   , pv_fr1					varchar2
-								   , pv_fr2					varchar2
-								   , pv_fr3					varchar2
-								   , pv_fr4					varchar2
-								   , pv_fr5					varchar2
-								   , pv_fr6					varchar2
-								   , pn_nf_priority			number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_pm_gl_jugadas_previas';								   
-begin
-	insert into olap_sys.pm_gl_jugadas_previas(jugada_seq
-											 , jugada_prioridad
-											 , comb1
-											 , comb2
-											 , comb3
-											 , comb4
-											 , comb5
-											 , comb6
-											 , lt1
-											 , lt2
-											 , lt3
-											 , lt4
-											 , lt5
-											 , lt6
-											 , sc1
-											 , sc2
-											 , sc3
-											 , sc4
-											 , sc5
-											 , sc6
-											 , pxc1
-											 , pxc2
-											 , pxc3
-											 , pxc4
-											 , pxc5
-											 , pxc6
-											 , sum_pxc
-											 , none_cnt
-											 , par_cnt
-											 , ultimo_sorteo
-											 , drawing_case
-											 , consecutivos
-											 , terminacion_doble
-											 , nf1
-											 , nf2
-											 , nf3
-											 , nf4
-											 , nf5
-											 , nf6
-											 , sum_nf
-											 , fr1
-											 , fr2
-											 , fr3
-											 , fr4
-											 , fr5
-											 , fr6
-											 , num_repetidos
-											 , add_repetidos
-											 , nf_priority)
-	values((select nvl(max(jugada_seq),0)+1 from olap_sys.pm_gl_jugadas_previas)
-		 , pn_jugada_prioridad
-		 , pn_comb1
-		 , pn_comb2
-		 , pn_comb3
-		 , pn_comb4
-		 , pn_comb5
-		 , pn_comb6
-		 , pv_lt1
-		 , pv_lt2
-		 , pv_lt3
-		 , pv_lt4
-		 , pv_lt5
-		 , pv_lt6
-		 , pv_sc1
-		 , pv_sc2
-		 , pv_sc3
-		 , pv_sc4
-		 , pv_sc5
-		 , pv_sc6
-		 , pv_pxc1
-		 , pv_pxc2
-		 , pv_pxc3
-		 , pv_pxc4
-		 , pv_pxc5
-		 , pv_pxc6
-		 , pn_sum_pxc
-		 , pn_none_cnt
-		 , pn_par_cnt
-		 , pn_ultimo_sorteo
-		 , pn_drawing_case
-		 , pv_consecutivos
-		 , pv_terminacion_doble
-		 , pv_nf1
-		 , pv_nf2
-		 , pv_nf3
-		 , pv_nf4
-		 , pv_nf5
-		 , pv_nf6
-		 , pn_sum_nf
-		 , pv_fr1
-		 , pv_fr2
-		 , pv_fr3
-		 , pv_fr4
-		 , pv_fr5
-		 , pv_fr6
-		 , 0
-		 , 0
-		 , pn_nf_priority
-		  );
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;	  
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_pm_gl_jugadas_previas;	
-
-				   
---!proceso para insertar las jugadas previas							
-procedure seleccionar_cursor (pn_drawing_case		number
-						   , pv_consecutivos		varchar2
-						   , pv_terminacion_doble	varchar2
-						   , pn_jugada_prioridad    number
-						   --!bandera para habilitar que se validen los ca por posicion
-						   , pv_look_ca_pos       		varchar2 
-						   --!contador que indica hasta cuantos ca no pueden hacer match
-						   , pn_ca_no_match_cnt  	number
-						   , pn_seq_ini             number
-						   , pn_seq_end			    number 
-						   , pv_not_in_lt1          varchar2
-						   , pv_not_in_lt2          varchar2
-						   , pv_not_in_lt3          varchar2
-						   , pv_not_in_lt4          varchar2
-						   , pv_not_in_lt5          varchar2
-						   , pv_not_in_lt6			varchar2	
-						   --!contador maximo de numeros favorables
-						   , pn_sum_nf			    number
-						   , pn_cursor_option       number
-						   , pv_ca2_flag		    varchar2			
-						   , pv_ca3_flag		    varchar2
-						   , pv_ca4_flag		    varchar2
-						   , pv_ca5_flag		    varchar2	
-						   --!deshabilitar funciones
-						   , pv_dis_nf_config_valid 		varchar2
-						   , pv_dis_filtrar_pareja_primos   varchar2
-						   , pv_dis_filtrar_extremos  		varchar2
-						   , pv_filtrar_primos_por_posicion varchar2
-							 ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'seleccionar_cursor';
-	CN$BETWEEN_INI			number := 1;
-	CN$BETWEEN_END			number := 99;
-	ln$loop_cnt 			number := 0 ;
-	
-	--!cursor basado en metadata asociado a descripcion EXCEPCIONES_LT para la seleccion de jugadas
-	cursor c_config (pv_consecutivos		  		varchar2
-				   , pv_terminacion_doble   		varchar2
-				   , pn_drawing_case        		number
-				   , pv_dis_nf_config_valid 		varchar2
-				   , pv_dis_filtrar_pareja_primos   varchar2
-				   , pv_dis_filtrar_extremos  		varchar2
-				   , pv_filtrar_primos_por_posicion	varchar2) is
-    with resultados_tbl as (
-    select max(gambling_id) gambling_id from olap_sys.sl_gamblings
-    ), calculo_stats_tbl as (
-    select * from olap_sys.s_calculo_stats cs where cs.drawing_id = (select gambling_id from resultados_tbl)
-    ), decenas_tbl as (
-    select pos1, pos2, pos3, pos4, pos5, pos6 from olap_sys.plan_jugadas where description = 'DECENAS' and status = 'A' and drawing_case = pn_drawing_case
-    ), favorables_tbl as (
-    select b_type, digit from olap_sys.s_calculo_stats cs where cs.preferencia_flag is not null and cs.drawing_id = (select gambling_id from resultados_tbl)
-    ), excepciones_tbl as (
-	select pj.pos1 seq_no_ini
-         , pj.pos2 seq_no_end
-         , jd.POS1
-         , jd.POS2
-         , jd.POS3
-         , jd.POS4
-         , jd.POS5
-         , jd.POS6
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'EXCEPCIONES_LT'
-	   and pj.drawing_case = pn_drawing_case
-	), ca_sum_comb_sum_tbl as (
-	select to_number(substr(pos1,1,instr(pos1,'-',1,1)-1)) b1_ini
-		 , to_number(substr(pos1,instr(pos1,'-',1,1)+1)) b1_end
-		 , to_number(substr(pos4,1,instr(pos4,'-',1,1)-1)) b4_ini
-		 , to_number(substr(pos4,instr(pos4,'-',1,1)+1)) b4_end
-		 , to_number(substr(pos6,1,instr(pos6,'-',1,1)-1)) b6_ini
-		 , to_number(substr(pos6,instr(pos6,'-',1,1)+1)) b6_end
-		 , r_ca_ini rca_sum_ini
-		 , r_ca_end rca_sum_end
-		 , j_comb_sum_ini rcomb_sum_ini
-		 , j_comb_sum_end rcomb_sum_end
-	  from olap_sys.plan_jugadas
-	 where description = 'CA_SUM_COMB_SUM'
-	   and status = 'A'
-	   and drawing_case = pn_drawing_case    
-    ), b3_b4_inpar_par_tbl as (
-	select jd.pos3
-         , jd.pos4
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B3_B4_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), b1_b4_b6_inpar_par_tbl as (
-	select jd.pos1
-         , jd.pos4
-		 , jd.pos6
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B1_B4_B6_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), b1_b3_b4_b6_inpar_par_tbl as (
-	select jd.pos1
-         , jd.pos3
-		 , jd.pos4
-		 , jd.pos6
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B1_B3_B4_B6_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), case_tbl as (
-    select COMB1
-         , COMB2
-         , COMB3
-         , COMB4
-         , COMB5
-         , COMB6
-         , T1_CNT
-         , T2_CNT
-         , NONE_CNT
-         , PAR_CNT
-      from olap_sys.w_combination_responses_fs
-     where 1=1
-       and STATUS = 'Y'
-       and PN_CNT = 2
-       --!drawing_case 
-       and D1 = (select pos1 from decenas_tbl)					
-       and D2 = (select pos2 from decenas_tbl)
-       and D3 = (select pos3 from decenas_tbl)
-       and D4 = (select pos4 from decenas_tbl)
-       and D5 = (select pos5 from decenas_tbl)
-       and D6 = (select pos6 from decenas_tbl)   
-       --!numeros favorables
-    --   and COMB1 in (select digit from favorables_tbl where b_type = 'B1')
-    --   and COMB2 in (select digit from favorables_tbl where b_type = 'B2')
-    --   and COMB3 in (select digit from favorables_tbl where b_type = 'B3')
-    --   and COMB4 in (select digit from favorables_tbl where b_type = 'B4')
-    --   and COMB5 in (select digit from favorables_tbl where b_type = 'B5')
-    --   and COMB6 in (select digit from favorables_tbl where b_type = 'B6')
-       --!contador de numeros consecutivos
-       and CO_CNT = decode(upper(pv_consecutivos),'Y',1,'N',0,0)
-    ) --select * from calculo_stats_tbl;
-    , jugadas_tbl as ( 
-      select COMB1
-           , COMB2
-           , COMB3
-           , COMB4
-           , COMB5
-           , COMB6
-		   , COMB1 + COMB2 + COMB3 + COMB4 + COMB5 + COMB6 COMB_SUM
-           , NONE_CNT
-           , PAR_CNT
-		   , T1_CNT
-           , T2_CNT
-           --!obtener suma de ciclos de aparicion
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') ca1
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') ca2
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') ca3
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') ca4
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') ca5
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') ca6
-           --!obtener suma de ciclos de aparicion
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sum_ca
-           --!obtener ley del tercio
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') lt1 
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') lt2
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') lt3
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') lt4
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') lt5
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') lt6
-           --!posiciones sin cambio
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') sc1 
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') sc2
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') sc3
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') sc4
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') sc5
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sc6
-           --!pronostico por ciclo string
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') pxc1 
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') pxc2
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') pxc3
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') pxc4
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') pxc5
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') pxc6 
-           --!pronostico por ciclo number
-           , decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1'),NULL,0,1)  
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6'),NULL,0,1) sum_pxc      
-           --!numeros favorables
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') nf1 
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') nf2
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') nf3
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') nf4
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') nf5
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') nf6   
-           , (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') 
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sum_nf 		   
-           --!obtener frecuencia
-           , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') fr1 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') fr2 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') fr3 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') fr4 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') fr5 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') fr6 
-        from case_tbl c
-       where 1=1
-         --!bandera de Frecuencia
---         and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') in ('R','G')
---		 and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') in ('R','G')
---		 and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') in ('R','G')
---		 and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') in ('R','G')
---		 and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') in ('R','G')
---		 and (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') in ('R','G')
-         --!bandera de posiciones sin cambio
-         --and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb1 and cs.b_type = 'B1')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb2 and cs.b_type = 'B2')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb3 and cs.b_type = 'B3')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb4 and cs.b_type = 'B4')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb5 and cs.b_type = 'B5')
-         --and exists (select 'X' from calculo_stats_tbl cs where cs.chng_posicion is null and cs.digit = c.comb6 and cs.b_type = 'B6')
-         --!bandera de pronostico por ciclo
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb1 and cs.b_type = 'B1')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb2 and cs.b_type = 'B2')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb3 and cs.b_type = 'B3')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb4 and cs.b_type = 'B4')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb5 and cs.b_type = 'B5')
-    --     and exists (select 'X' from calculo_stats_tbl cs where cs.pronos_ciclo is null and cs.digit = c.comb6 and cs.b_type = 'B6')    
-    ), jugadas_finales_tbl as (
-	  select COMB1
-           , COMB2
-           , COMB3
-           , COMB4
-           , COMB5
-           , COMB6
-		   , olap_sys.w_common_pkg.get_conteo_favorables(pn_drawing_case, NF1, NF2, NF3, NF4, NF5, NF6) sum_nf
-		   , olap_sys.w_common_pkg.get_conteo_b1_b4_b6(pn_drawing_case, COMB1, COMB4, COMB6) nf_priority
-        from jugadas_tbl
-       where 1=1
-         --!pares e inpares
-		 and olap_sys.w_common_pkg.valida_conteo_inpar_par(pn_drawing_case => pn_drawing_case, pn_none_cnt => none_cnt, pn_par_cnt => par_cnt) = 'Y'
-		 --!manejo de terminaciones en la jugada
---		 and olap_sys.w_common_pkg.valida_conteo_terminaciones(pn_drawing_case => pn_drawing_case, pn_term1_cnt => t1_cnt, pn_term2_cnt => t2_cnt, pv_terminacion_doble => pv_terminacion_doble) = 'Y'
-		 --!filtrando jugadas en base a rangos de ciclos de aparicion
-		 --!filtrando jugadas en base a rangos de ciclos de aparicion
-         and ca1 between (select b1_ini from ca_sum_comb_sum_tbl) and (select b1_end from ca_sum_comb_sum_tbl)
-         and ca4 between (select b4_ini from ca_sum_comb_sum_tbl) and (select b4_end from ca_sum_comb_sum_tbl)
-         and ca6 between (select b6_ini from ca_sum_comb_sum_tbl) and (select b6_end from ca_sum_comb_sum_tbl)
-         --!filtrar jugadas en base a rango de ca_sum
-         and sum_ca between (select rca_sum_ini from ca_sum_comb_sum_tbl) and (select rca_sum_end from ca_sum_comb_sum_tbl)
-         --!filtrar jugadas en base a rango de comb_sum
-         and comb_sum between (select rcomb_sum_ini from ca_sum_comb_sum_tbl) and (select rcomb_sum_end from ca_sum_comb_sum_tbl)      
-         --!validacion de ley del tercio
-         and (lt1,lt2,lt3,lt4,lt5,lt6) in (select distinct lt1, lt2, lt3, lt4, lt5, lt6 
-											 from olap_sys.s_gl_ley_tercio_patterns 
-											where null_cnt  = 0 
-											  and red_cnt   < 3 
-											  and match_cnt = 0 
-											  and seq_no between (select distinct seq_no_ini from excepciones_tbl) and (select distinct seq_no_end from excepciones_tbl)
-											  and lt1 not in(select distinct pos1 from excepciones_tbl)
-											  and lt2 not in(select distinct pos2 from excepciones_tbl)
-											  and lt3 not in(select distinct pos3 from excepciones_tbl)
-											  and lt4 not in(select distinct pos4 from excepciones_tbl)
-											  and lt5 not in(select distinct pos5 from excepciones_tbl)
-											  and lt6 not in(select distinct pos6 from excepciones_tbl))
-         --!valida si el numero de ocurrencias de numeros favorables de 1 a 4 esta en la configuracion de la tabla
-         --and olap_sys.w_common_pkg.gl_is_nf_config_valid(pn_drawing_case, pn_sum_nf, sum_nf, nf1, nf2, nf3, nf4, nf5, nf6, pv_dis_nf_config_valid) = 'Y' 
-         --!filtrar las parejas de numeros primos en base al percentil 10 y 90
-         --and olap_sys.w_common_pkg.pm_filtrar_pareja_primos(COMB1,COMB2,COMB3,COMB4,COMB5,COMB6,pv_dis_filtrar_pareja_primos) = 'Y'
-         --!filtrando jugadas en base a los numeros extremos
---         and olap_sys.w_common_pkg.pm_filtrar_extremos(pn_drawing_case => pn_drawing_case, pn_comb1 => COMB1, pn_comb6 => COMB6, pv_dis_filtrar_extremos => pv_dis_filtrar_extremos)  = 'Y'
-		 --!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
---		 and (mod(comb3,2),mod(comb4,2)) in (select pos3, pos4 from b3_b4_inpar_par_tbl)
-		 --!recupera el patron de inpares y pares de la posicion b1, b4 y b6 por decena
-		 --and (mod(comb1,2),mod(comb4,2),mod(comb6,2)) in (select pos1, pos4, pos6 from b1_b4_b6_inpar_par_tbl)
-		 --!recupera el patron de inpares y pares de la posicion b1, b3, b4 y b6 por decena
-		 --and (mod(comb1,2),mod(comb3,2),mod(comb4,2),mod(comb6,2)) in (select pos1, pos3, pos4, pos6 from b1_b3_b4_b6_inpar_par_tbl)
-		 --!filtrar jugadas en base a posiciones de numeros primos
---		 and olap_sys.w_common_pkg.pm_filtrar_primos_por_posicion(pn_drawing_case,COMB1,COMB2,COMB3,COMB4,COMB5,COMB6,pv_filtrar_primos_por_posicion) = 'Y'
-	) select *
-	    from jugadas_finales_tbl
---	   where nf_priority >= 0	
---	     and sum_nf > 0
-     order by COMB1, COMB6; 
-
-	--!cursor basado en parametros de entrada del proceso
-	cursor c_main (pv_consecutivos		  			varchar2
-				 , pv_terminacion_doble   			varchar2
-				 , pn_drawing_case        			number
-				 , pv_dis_nf_config_valid 		    varchar2
-				 , pv_dis_filtrar_pareja_primos     varchar2
-				 , pv_dis_filtrar_extremos  		varchar2
-				 , pv_filtrar_primos_por_posicion	varchar2
-				 , pn_seq_ini						number
-				 , pn_seq_end						number
-				 , pv_not_in_lt1					varchar2
-				 , pv_not_in_lt2					varchar2
-				 , pv_not_in_lt3					varchar2
-				 , pv_not_in_lt4					varchar2
-				 , pv_not_in_lt5					varchar2
-				 , pv_not_in_lt6					varchar2
-				 ) is
-    with resultados_tbl as (
-    select max(gambling_id) gambling_id from olap_sys.sl_gamblings
-    ), calculo_stats_tbl as (
-    select * from olap_sys.s_calculo_stats cs where cs.drawing_id = (select gambling_id from resultados_tbl)
-    ), decenas_tbl as (
-    select pos1, pos2, pos3, pos4, pos5, pos6 from olap_sys.plan_jugadas where description = 'DECENAS' and status = 'A' and drawing_case = pn_drawing_case
-    ), favorables_tbl as (
-    select b_type, digit from olap_sys.s_calculo_stats cs where cs.preferencia_flag is not null and cs.drawing_id = (select gambling_id from resultados_tbl)
-    ), ca_sum_comb_sum_tbl as (
-	select to_number(substr(pos1,1,instr(pos1,'-',1,1)-1)) b1_ini
-		 , to_number(substr(pos1,instr(pos1,'-',1,1)+1)) b1_end
-		 , to_number(substr(pos4,1,instr(pos4,'-',1,1)-1)) b4_ini
-		 , to_number(substr(pos4,instr(pos4,'-',1,1)+1)) b4_end
-		 , to_number(substr(pos6,1,instr(pos6,'-',1,1)-1)) b6_ini
-		 , to_number(substr(pos6,instr(pos6,'-',1,1)+1)) b6_end
-		 , r_ca_ini rca_sum_ini
-		 , r_ca_end rca_sum_end
-		 , j_comb_sum_ini rcomb_sum_ini
-		 , j_comb_sum_end rcomb_sum_end
-	  from olap_sys.plan_jugadas
-	 where description = 'CA_SUM_COMB_SUM'
-	   and status = 'A'
-	   and drawing_case = pn_drawing_case    
-    ), b3_b4_inpar_par_tbl as (
-	select jd.pos3
-         , jd.pos4
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B3_B4_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), b1_b4_b6_inpar_par_tbl as (
-	select jd.pos1
-         , jd.pos4
-		 , jd.pos6
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B1_B4_B6_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), b1_b3_b4_b6_inpar_par_tbl as (
-	select jd.pos1
-         , jd.pos3
-		 , jd.pos4
-		 , jd.pos6
-	  from olap_sys.plan_jugada_details jd
-		 , olap_sys.plan_jugadas pj 
-	 where pj.drawing_type = jd.drawing_type 
-	   and pj.id = jd.plan_jugada_id 
-	   and jd.status = 'A'
-	   and pj.status = 'A'
-	   and jd.description = 'B1_B3_B4_B6_INPAR_PAR'
-	   and pj.drawing_case = pn_drawing_case
-	), case_tbl as (
-    select COMB1
-         , COMB2
-         , COMB3
-         , COMB4
-         , COMB5
-         , COMB6
-         , T1_CNT
-         , T2_CNT
-         , NONE_CNT
-         , PAR_CNT
-      from olap_sys.w_combination_responses_fs
-     where 1=1
-       and STATUS = 'Y'
-       and PN_CNT = 2
-       --!drawing_case 
-       and D1 = (select pos1 from decenas_tbl)					
-       and D2 = (select pos2 from decenas_tbl)
-       and D3 = (select pos3 from decenas_tbl)
-       and D4 = (select pos4 from decenas_tbl)
-       and D5 = (select pos5 from decenas_tbl)
-       and D6 = (select pos6 from decenas_tbl)   
-       --!numeros favorables
-    --   and COMB1 in (select digit from favorables_tbl where b_type = 'B1')
-    --   and COMB2 in (select digit from favorables_tbl where b_type = 'B2')
-    --   and COMB3 in (select digit from favorables_tbl where b_type = 'B3')
-    --   and COMB4 in (select digit from favorables_tbl where b_type = 'B4')
-    --   and COMB5 in (select digit from favorables_tbl where b_type = 'B5')
-    --   and COMB6 in (select digit from favorables_tbl where b_type = 'B6')
-       --!contador de numeros consecutivos
-       and CO_CNT = decode(upper(pv_consecutivos),'Y',1,'N',0,0)
-    ) --select * from calculo_stats_tbl;
-    , jugadas_tbl as ( 
-      select COMB1
-           , COMB2
-           , COMB3
-           , COMB4
-           , COMB5
-           , COMB6
-		   , COMB1 + COMB2 + COMB3 + COMB4 + COMB5 + COMB6 COMB_SUM
-           , NONE_CNT
-           , PAR_CNT
-		   , T1_CNT
-           , T2_CNT
-           --!obtener suma de ciclos de aparicion
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') ca1
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') ca2
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') ca3
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') ca4
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') ca5
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') ca6
-           --!obtener suma de ciclos de aparicion
-           , (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') +
-             (select ciclo_aparicion from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sum_ca
-           --!obtener ley del tercio
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') lt1 
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') lt2
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') lt3
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') lt4
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') lt5
-           , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') lt6
-           --!posiciones sin cambio
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') sc1 
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') sc2
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') sc3
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') sc4
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') sc5
-           , (select nvl(chng_posicion,'SC') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sc6
-           --!pronostico por ciclo string
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') pxc1 
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') pxc2
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') pxc3
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') pxc4
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') pxc5
-           , (select decode(to_char(pronos_ciclo),null,'NULO','V') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') pxc6 
-           --!pronostico por ciclo number
-           , decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1'),NULL,0,1)  
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5'),NULL,0,1) 
-           + decode((select pronos_ciclo from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6'),NULL,0,1) sum_pxc      
-           --!numeros favorables
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') nf1 
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') nf2
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') nf3
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') nf4
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') nf5
-           , (select nvl(preferencia_flag,'.') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') nf6   
-           , (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') 
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5')
-           + (select nvl(replace(preferencia_flag,'X',1),0) from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') sum_nf 		   
-           --!obtener frecuencia
-           , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb1 and cs.b_type = 'B1') fr1 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb2 and cs.b_type = 'B2') fr2 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb3 and cs.b_type = 'B3') fr3 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb4 and cs.b_type = 'B4') fr4 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb5 and cs.b_type = 'B5') fr5 
-		   , (select decode(color_ubicacion,1,'R',2,'G',3,'B') from calculo_stats_tbl cs where cs.digit = c.comb6 and cs.b_type = 'B6') fr6 
-        from case_tbl c
-    ), jugadas_finales_tbl as (
-   	  select COMB1
-           , COMB2
-           , COMB3
-           , COMB4
-           , COMB5
-           , COMB6
-		   , olap_sys.w_common_pkg.get_conteo_favorables(pn_drawing_case, NF1, NF2, NF3, NF4, NF5, NF6) sum_nf
-		   , olap_sys.w_common_pkg.get_conteo_b1_b4_b6(pn_drawing_case, COMB1, COMB4, COMB6) nf_priority
-        from jugadas_tbl
-       where 1=1
-         --!pares e inpares
-		 and olap_sys.w_common_pkg.valida_conteo_inpar_par(pn_drawing_case => pn_drawing_case, pn_none_cnt => none_cnt, pn_par_cnt => par_cnt) = 'Y'
-		 --!manejo de terminaciones en la jugada
-		 and olap_sys.w_common_pkg.valida_conteo_terminaciones(pn_drawing_case => pn_drawing_case, pn_term1_cnt => t1_cnt, pn_term2_cnt => t2_cnt, pv_terminacion_doble => pv_terminacion_doble) = 'Y'
-		 --!filtrando jugadas en base a rangos de ciclos de aparicion
---		 and olap_sys.w_common_pkg.gl_filtrar_ca_handler(pn_drawing_case, ca1, ca2, ca3, ca4, ca5, ca6, sum_ca, pv_look_ca_pos, pn_ca_no_match_cnt) = 'Y'
-		 --!filtrando jugadas en base a rangos de ciclos de aparicion
-         and ca1 between (select b1_ini from ca_sum_comb_sum_tbl) and (select b1_end from ca_sum_comb_sum_tbl)
-         and ca4 between (select b4_ini from ca_sum_comb_sum_tbl) and (select b4_end from ca_sum_comb_sum_tbl)
-         and ca6 between (select b6_ini from ca_sum_comb_sum_tbl) and (select b6_end from ca_sum_comb_sum_tbl)
-         --!filtrar jugadas en base a rango de ca_sum
-         and sum_ca between (select rca_sum_ini from ca_sum_comb_sum_tbl) and (select rca_sum_end from ca_sum_comb_sum_tbl)
-         --!filtrar jugadas en base a rango de comb_sum
-         and comb_sum between (select rcomb_sum_ini from ca_sum_comb_sum_tbl) and (select rcomb_sum_end from ca_sum_comb_sum_tbl)      
-         --!validacion de ley del tercio
-         and (lt1,lt2,lt3,lt4,lt5,lt6) in (select distinct lt1, lt2, lt3, lt4, lt5, lt6 
-											 from olap_sys.s_gl_ley_tercio_patterns 
-											where null_cnt  = 0 
-											  and red_cnt   < 3 
-											  and match_cnt = 0 
-											  and seq_no between pn_seq_ini and pn_seq_end
-											  and lt1 not in(pv_not_in_lt1)
-											  and lt2 not in(pv_not_in_lt2)
-											  and lt3 not in(pv_not_in_lt3)
-											  and lt4 not in(pv_not_in_lt4)
-											  and lt5 not in(pv_not_in_lt5)
-											  and lt6 not in(pv_not_in_lt6))
-         --!valida si el numero de ocurrencias de numeros favorables de 1 a 4 esta en la configuracion de la tabla
-         --and olap_sys.w_common_pkg.gl_is_nf_config_valid(pn_drawing_case, pn_sum_nf, sum_nf, nf1, nf2, nf3, nf4, nf5, nf6, pv_dis_nf_config_valid) = 'Y' 
-         --!filtrar las parejas de numeros primos en base al percentil 10 y 90
-         --and olap_sys.w_common_pkg.pm_filtrar_pareja_primos(COMB1,COMB2,COMB3,COMB4,COMB5,COMB6,pv_dis_filtrar_pareja_primos) = 'Y'
-         --!filtrando jugadas en base a los numeros extremos
-         and olap_sys.w_common_pkg.pm_filtrar_extremos(pn_drawing_case => pn_drawing_case, pn_comb1 => COMB1, pn_comb6 => COMB6, pv_dis_filtrar_extremos => pv_dis_filtrar_extremos)  = 'Y'
- 		 --!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-		 and (mod(comb3,2),mod(comb4,2)) in (select pos3, pos4 from b3_b4_inpar_par_tbl)
-		 --!recupera el patron de inpares y pares de la posicion b1, b4 y b6 por decena
-		 --and (mod(comb1,2),mod(comb4,2),mod(comb6,2)) in (select pos1, pos4, pos6 from b1_b4_b6_inpar_par_tbl)
-		 --!recupera el patron de inpares y pares de la posicion b1, b3, b4 y b6 por decena
-		 --and (mod(comb1,2),mod(comb3,2),mod(comb4,2),mod(comb6,2)) in (select pos1, pos3, pos4, pos6 from b1_b3_b4_b6_inpar_par_tbl)		 
-		 --!filtrar jugadas en base a posiciones de numeros primos
---		 and olap_sys.w_common_pkg.pm_filtrar_primos_por_posicion(pn_drawing_case,COMB1,COMB2,COMB3,COMB4,COMB5,COMB6,pv_filtrar_primos_por_posicion) = 'Y'
-	) select *
-	    from jugadas_finales_tbl
-	   where nf_priority >= 0	
-	     and sum_nf > 0
-     order by COMB1, COMB6; 	 
-begin
-	dbms_output.put_line('---------------------------------');
-	dbms_output.put_line('pn_drawing_case: '||pn_drawing_case);		
-	dbms_output.put_line('pv_consecutivos: '||pv_consecutivos);		
-	dbms_output.put_line('pv_terminacion_doble: '||pv_terminacion_doble);	
-	dbms_output.put_line('pn_jugada_prioridad: '||pn_jugada_prioridad);    
-	dbms_output.put_line('pv_look_ca_pos: '||pv_look_ca_pos);       		 					   
-	dbms_output.put_line('pn_ca_no_match_cnt: '||pn_ca_no_match_cnt);  	
-	dbms_output.put_line('pn_seq_ini: '||pn_seq_ini);             
-	dbms_output.put_line('pn_seq_end: '||pn_seq_end);			     
-	dbms_output.put_line('pv_not_in_lt1: '||pv_not_in_lt1);          
-	dbms_output.put_line('pv_not_in_lt2: '||pv_not_in_lt2);          
-	dbms_output.put_line('pv_not_in_lt3: '||pv_not_in_lt3);          
-	dbms_output.put_line('pv_not_in_lt4: '||pv_not_in_lt4);          
-	dbms_output.put_line('pv_not_in_lt5: '||pv_not_in_lt5);          
-	dbms_output.put_line('pv_not_in_lt6: '||pv_not_in_lt6);				
-	dbms_output.put_line('pn_sum_nf: '||pn_sum_nf);			    
-	dbms_output.put_line('pn_cursor_option: '||pn_cursor_option);       
-	dbms_output.put_line('pv_ca2_flag: '||pv_ca2_flag);		    			
-	dbms_output.put_line('pv_ca3_flag: '||pv_ca3_flag);		    
-	dbms_output.put_line('pv_ca4_flag: '||pv_ca4_flag);		    
-	dbms_output.put_line('pv_ca5_flag: '||pv_ca5_flag);		    	
-	dbms_output.put_line('pv_dis_nf_config_valid: '||pv_dis_nf_config_valid); 		
-	dbms_output.put_line('pv_dis_filtrar_pareja_primos: '||pv_dis_filtrar_pareja_primos);   
-	dbms_output.put_line('pv_dis_filtrar_extremos: '||pv_dis_filtrar_extremos);  		
-	dbms_output.put_line('pv_filtrar_primos_por_posicion: '||pv_filtrar_primos_por_posicion); 	
-	olap_sys.w_common_pkg.g_inscnt := 0;
-
-	if pn_cursor_option =  1 then
-		for j in c_config (pv_consecutivos	  			=> pv_consecutivos
-					     , pv_terminacion_doble 			=> pv_terminacion_doble
-					     , pn_drawing_case      			=> pn_drawing_case
-					     , pv_dis_nf_config_valid 		=> pv_dis_nf_config_valid
-					     , pv_dis_filtrar_pareja_primos   => pv_dis_filtrar_pareja_primos
-					     , pv_dis_filtrar_extremos  		=> pv_dis_filtrar_extremos
-					     , pv_filtrar_primos_por_posicion	=> pv_filtrar_primos_por_posicion
-					      ) loop
-			ln$loop_cnt := ln$loop_cnt + 1;				   				   
-			--!proceso para insertar las jugadas previas en la tabla de interface
-			ins_gl_interface (pn_comb1				=> j.comb1
-						    , pn_comb2				=> j.comb2
-						    , pn_comb3				=> j.comb3
-						    , pn_comb4				=> j.comb4
-						    , pn_comb5				=> j.comb5
-						    , pn_comb6				=> j.comb6); 
-		end loop;
-	else	
-		for j in c_main (pv_consecutivos	  			=> pv_consecutivos
-					   , pv_terminacion_doble 			=> pv_terminacion_doble
-					   , pn_drawing_case      			=> pn_drawing_case
-					   , pv_dis_nf_config_valid 		=> pv_dis_nf_config_valid
-					   , pv_dis_filtrar_pareja_primos   => pv_dis_filtrar_pareja_primos
-					   , pv_dis_filtrar_extremos  		=> pv_dis_filtrar_extremos
-					   , pv_filtrar_primos_por_posicion	=> pv_filtrar_primos_por_posicion
-					   , pn_seq_ini						=> pn_seq_ini
-					   , pn_seq_end						=> pn_seq_end
-					   , pv_not_in_lt1					=> pv_not_in_lt1
-					   , pv_not_in_lt2					=> pv_not_in_lt2
-					   , pv_not_in_lt3					=> pv_not_in_lt3
-					   , pv_not_in_lt4					=> pv_not_in_lt4
-					   , pv_not_in_lt5					=> pv_not_in_lt5
-					   , pv_not_in_lt6					=> pv_not_in_lt6
-					   ) loop
-			ln$loop_cnt := ln$loop_cnt + 1;				   				   
-			--!proceso para insertar las jugadas previas en la tabla de interface
-			ins_gl_interface (pn_comb1				=> j.comb1
-						    , pn_comb2				=> j.comb2
-						    , pn_comb3				=> j.comb3
-						    , pn_comb4				=> j.comb4
-						    , pn_comb5				=> j.comb5
-						    , pn_comb6				=> j.comb6); 
-		end loop;
-	end if;
-	dbms_output.put_line('fetch cnt: '||ln$loop_cnt);
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end seleccionar_cursor;	
-
---!valida si se enucuentra un numero repetido en la jugada en base al digito de entrada
-function valida_numero_repetido(pn_digito		number
-							  , pn_pos1			number
-							  , pn_pos2			number
-							  , pn_pos3			number
-							  , pn_pos4			number
-							  , pn_pos5			number
-							  , pn_pos6			number
-							   ) return number is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'valida_numero_repetido';
-	ln$repetido_cnt			number := 0;
-begin
-	if pn_digito = pn_pos1 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-
-	if pn_digito = pn_pos2 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-
-	if pn_digito = pn_pos3 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-
-	if pn_digito = pn_pos4 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-
-	if pn_digito = pn_pos5 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-
-	if pn_digito = pn_pos6 then
-		ln$repetido_cnt := ln$repetido_cnt + 1;
-	end if;
-	
-	return ln$repetido_cnt;
-exception
-  when others then
-	return 0;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end valida_numero_repetido;	
-
-
---!registra los numeros repetidos en base al ultimo sorteo
-procedure registra_numeros_repetidos is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'registra_numeros_repetidos';
-	ln$err_code				number := -1;
-	
-	cursor c_ultimo_resultado is
-	with rank_tbl as (  
-	select gambling_id, comb1, comb2, comb3, comb4, comb5, comb6, additional
-		 , rank() over (partition by gambling_type order by gambling_id desc) rank
-	  from olap_sys.sl_gamblings
-	) select comb1||','||comb2||','||comb3||','||comb4||','||comb5||','||comb6 resultado, additional, gambling_id drawing_id
-		from rank_tbl
-	   where rank = 1 
-		 and gambling_id = (select max(drawing_id) from olap_sys.s_calculo_stats);	
-
-	cursor c_jugadas is
-	select jugada_seq, comb1, comb2, comb3, comb4, comb5, comb6, ultimo_sorteo
-      from olap_sys.pm_gl_jugadas_previas;
-begin	
-	for j in c_jugadas loop
-		for r in c_ultimo_resultado loop
-		
-			if r.drawing_id = j.ultimo_sorteo then
-				gtbl$row_source	.delete;
-				--!convertir un string separado por comas en renglones de un query
-				olap_sys.w_common_pkg.translate_string_to_rows (pv_string  => r.resultado
-															  , xtbl_row   => gtbl$row_source
-															  , x_err_code => ln$err_code);	
-				
-				for d in gtbl$row_source.first..gtbl$row_source.last loop				
-					--!valida si se enucuentra un numero repetido en la jugada en base al digito del resultado
-					if valida_numero_repetido(pn_digito	=> gtbl$row_source(d)
-										    , pn_pos1	=> j.comb1
-										    , pn_pos2	=> j.comb2
-										    , pn_pos3	=> j.comb3
-										    , pn_pos4	=> j.comb4
-										    , pn_pos5	=> j.comb5
-										    , pn_pos6	=> j.comb6) > 0 then
-					--dbms_output.put_line('repetido encontrado. '||j.jugada_seq);
-						update olap_sys.pm_gl_jugadas_previas
-						   set num_repetidos = nvl(num_repetidos,0) + 1
-						 where jugada_seq = j.jugada_seq;    
-					end if;						
-				end loop;
-				
-				--!valida si se enucuentra un numero repetido en la jugada en base al digito del adicional
-				if valida_numero_repetido(pn_digito	=> r.additional
-										, pn_pos1	=> j.comb1
-										, pn_pos2	=> j.comb2
-										, pn_pos3	=> j.comb3
-										, pn_pos4	=> j.comb4
-										, pn_pos5	=> j.comb5
-										, pn_pos6	=> j.comb6) > 0 then
-				--dbms_output.put_line('repetido encontrado. '||j.jugada_seq);
-					update olap_sys.pm_gl_jugadas_previas
-					   set add_repetidos = nvl(add_repetidos,0) + 1
-					 where jugada_seq = j.jugada_seq;    
-				end if;						
-				
-			end if;	
-		end loop;
-	end loop;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end registra_numeros_repetidos;	
-
-
---!proceso para generar las jugadas previas para el sorteo	
-procedure pm_gl_genera_jugadas_handler(--!bandera para habilitar que se validen los ca por posicion
-							           pv_look_ca_pos       	varchar2 default 'Y'
-									   --!contador que indica hasta cuantos ca no pueden hacer match
-									 , pn_ca_no_match_cnt  number default 1
-									 , pn_seq_ini          number
-									 , pn_seq_end          number
-									 , pn_drawing_case     number default NULL
-									 , pv_not_in_lt1       varchar2 default '&'
-									 , pv_not_in_lt2       varchar2 default '&'
-									 , pv_not_in_lt3       varchar2 default '&'
-									 , pv_not_in_lt4       varchar2 default '&'
-									 , pv_not_in_lt5       varchar2 default '&'
-									 , pv_not_in_lt6       varchar2 default '&'	
-									 , pn_sum_nf           number default 3
-									 , pn_cursor_option    number default 1	
-									 , pv_ca2_flag		   varchar2 default 'Y'			
-									 , pv_ca3_flag		   varchar2 default 'Y'
-									 , pv_ca4_flag		   varchar2 default 'Y'
-									 , pv_ca5_flag		   varchar2 default 'Y'
-									 --!deshabilitar funciones
-									 , pv_dis_nf_config_valid 		varchar2 default 'N'
-									 , pv_dis_filtrar_pareja_primos varchar2 default 'N'
-									 , pv_dis_filtrar_extremos		varchar2 default 'N'
-									 , pv_filtrar_primos_por_posicion varchar2 default 'N'
-									 ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pm_gl_genera_jugadas_handler';
-	ln$ins_grand_total		number:= 0;
-	ltbl$jugada				gt$jugada_tbl;
-	ltbl$jugada_tipos		gt$jugada_tipos_tbl;
-begin
-    dbms_output.enable(null);
-	--!guardar las estadisticas de la suma de los numeros primos en base a su posicion
-    pm_primos_por_posicion_handler;
-
-	--!limpiando datos en la tabla
-	--delete olap_sys.pm_gl_jugadas_previas;
-	delete olap_sys.gl_interface;
-
-	--!popular arreglos con la configuracion para ejecutar el query que recuperara las jugadas
-	popular_arreglos(pn_drawing_case   => pn_drawing_case
-	               , xtbl$jugada	   => ltbl$jugada
-				   , xtbl$jugada_tipos => ltbl$jugada_tipos);
-					   
-	
-	for j in ltbl$jugada.first..ltbl$jugada.last loop
-		dbms_output.put_line('<<drawing_case>>: '||ltbl$jugada(j).drawing_case);
-		for jt in ltbl$jugada_tipos.first..ltbl$jugada_tipos.last loop
-			seleccionar_cursor (pn_drawing_case	   	 => ltbl$jugada(j).drawing_case
-							  , pv_consecutivos	   	 => ltbl$jugada_tipos(jt).consecutivo
-							  , pv_terminacion_doble => ltbl$jugada_tipos(jt).terminacion_doble
-							  , pn_jugada_prioridad  => ltbl$jugada(j).jugada_prioridad
-							  , pv_look_ca_pos       => pv_look_ca_pos
-							  , pn_ca_no_match_cnt   => pn_ca_no_match_cnt
-							  , pn_seq_ini           => pn_seq_ini
-							  , pn_seq_end			 => pn_seq_end
-							  , pv_not_in_lt1        => pv_not_in_lt1
-							  , pv_not_in_lt2        => pv_not_in_lt2
-							  , pv_not_in_lt3        => pv_not_in_lt3
-							  , pv_not_in_lt4        => pv_not_in_lt4
-							  , pv_not_in_lt5        => pv_not_in_lt5
-							  , pv_not_in_lt6        => pv_not_in_lt6
-							  , pn_sum_nf            => pn_sum_nf	
-							  , pn_cursor_option     => pn_cursor_option
-							  , pv_ca2_flag		     => pv_ca2_flag		
-							  , pv_ca3_flag		     => pv_ca3_flag
-							  , pv_ca4_flag		     => pv_ca4_flag
-							  , pv_ca5_flag          => pv_ca5_flag
-							  --!deshabilitar funciones
-							  , pv_dis_nf_config_valid 		 => pv_dis_nf_config_valid
-							  , pv_dis_filtrar_pareja_primos => pv_dis_filtrar_pareja_primos
-							  , pv_dis_filtrar_extremos		 => pv_dis_filtrar_extremos
-							  , pv_filtrar_primos_por_posicion => pv_filtrar_primos_por_posicion
-							   );
-			ln$ins_grand_total := olap_sys.w_common_pkg.g_inscnt + ln$ins_grand_total;
-			dbms_output.put_line(lpad(olap_sys.w_common_pkg.g_inscnt,3,'000')||' rows inserted.  case: '||ltbl$jugada(j).drawing_case
-															   ||' prioridad: '||ltbl$jugada(j).jugada_prioridad
-															   ||' consecutivo: '||ltbl$jugada_tipos(jt).consecutivo
-															   ||' terminacion_doble: '||ltbl$jugada_tipos(jt).terminacion_doble		
-								);	
-		end loop;						
-	end loop;
-
-	--!registra los numeros repetidos en base al ultimo sorteo
-	registra_numeros_repetidos;
-	
-	commit;
-	dbms_output.put_line(ln$ins_grand_total||' total rows inserted');
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end pm_gl_genera_jugadas_handler;
-							
---!insertar datos en la tabla plan_jugada_ciclos_aparicion
-procedure ins_plan_jugada_ca (pn_drawing_case		number
-							, pv_b_type				varchar2
-							, pn_ca_ini				number
-							, pn_ca_end				number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_ca';
-begin
-	insert into olap_sys.plan_jugada_ciclos_aparicion (plan_jugada_id
-													 , id
-													 , b_type
-													 , ca_ini
-													 , ca_end
-													 , status
-													 , created_by
-													 , creation_date)
-	values (
-			(select id from olap_sys.plan_jugadas where drawing_case = pn_drawing_case and description= 'DECENAS' and status = 'A')
-		  , (select nvl(max(id),0)+1 from olap_sys.plan_jugada_ciclos_aparicion)
-		  , pv_b_type
-		  , pn_ca_ini
-		  , pn_ca_end
-		  , 'A'
-		  , USER
-		  , SYSDATE);												 
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    	
-end ins_plan_jugada_ca;
-							
-							
-							
---!proceso para insertar rangos de ciclos de aparicion en la tabla plan_jugada_ciclos_aparicion
-procedure plan_jugada_ca_handler (ptbl$plan_jugada_ca_tbl		gt$plan_jugada_ca_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'plan_jugada_ca_handler';
-	ln$ins_grand_total		number := 0;
-begin
-  if ptbl$plan_jugada_ca_tbl.count > 0 then
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_ciclos_aparicion;
-	
-	for ca in ptbl$plan_jugada_ca_tbl.first..ptbl$plan_jugada_ca_tbl.last loop
-		--!insertar datos en la tabla plan_jugada_ciclos_aparicion
-		ins_plan_jugada_ca (pn_drawing_case	=> ptbl$plan_jugada_ca_tbl(ca).drawing_case
-						  , pv_b_type		=> ptbl$plan_jugada_ca_tbl(ca).b_type
-						  , pn_ca_ini		=> ptbl$plan_jugada_ca_tbl(ca).ca_ini
-						  , pn_ca_end		=> ptbl$plan_jugada_ca_tbl(ca).ca_end);	
-		ln$ins_grand_total := ln$ins_grand_total + 1;				  	
-	end loop;
-	commit;	
-	dbms_output.put_line(ln$ins_grand_total||' total rows inserted');
-  end if;
-exception 
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end plan_jugada_ca_handler;
-
---!obtener la suma de incidencias de numeros primos en base al case 
-procedure get_primos_suma(pn_drawing_case  				  number
-						, pn_primos_cnt					  number
-						, pn_plan_jugada_id				  number
-						, pn_percentile                   number
-						, x_err_code    	in out nocopy number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'get_primos_suma';
-	cursor c_primos_sum (pn_drawing_case		  number
-					   , pn_primos_cnt			  number) is
-	with primo_sum_dtl as ( 
-	select sum(decode(PN1,0,0,1)) PN1
-		 , sum(decode(PN2,0,0,1)) PN2
-		 , sum(decode(PN3,0,0,1)) PN3
-		 , sum(decode(PN4,0,0,1)) PN4
-		 , sum(decode(PN5,0,0,1)) PN5
-		 , sum(decode(PN6,0,0,1)) PN6
-	  from olap_sys.pm_mr_resultados_v2
-	 where pn_cnt = pn_primos_cnt 
-	   and pn1 > 0
-	   and dr = pn_drawing_case
-	), union_sum_tbl as (
-	select pn1 pn_sum from primo_sum_dtl 
-	union all
-	select pn2 from primo_sum_dtl 
-	union all
-	select pn3 from primo_sum_dtl 
-	union all
-	select pn4 from primo_sum_dtl 
-	union all
-	select pn5 from primo_sum_dtl 
-	union all
-	select pn6 from primo_sum_dtl 
-	), percentil_tbl as (
-	select percentile_disc(pn_percentile) within group (order by pn_sum) percentile
-		from union_sum_tbl
-	) select pn1
-		   , pn2
-		   , pn3
-		   , pn4
-		   , pn5
-		   , pn6
-		   , (select percentile from percentil_tbl) percentile
-		from primo_sum_dtl;
-begin
---	dbms_output.put_line(LV$PROCEDURE_NAME);
---	dbms_output.put_line('pn_drawing_case: '||pn_drawing_case);
---	dbms_output.put_line('pn_primos_cnt: '||pn_primos_cnt);
-	x_err_code := -1;
-	
-	for k in c_primos_sum (pn_drawing_case => pn_drawing_case 
-						 , pn_primos_cnt   => pn_primos_cnt) loop		
-
-		--!procedimiento para insertar registros en la tabla plan_jugada_details
-		ins_plan_jugada_details(pn_plan_jugada_id => pn_plan_jugada_id
-							  , pv_pos1			  => to_char(k.pn1)
-							  , pv_pos2			  => to_char(k.pn2)
-							  , pv_pos3			  => to_char(k.pn3)
-							  , pv_pos4			  => to_char(k.pn4)
-							  , pv_pos5			  => to_char(k.pn5)
-							  , pv_pos6			  => to_char(k.pn6)
-							  , pv_seq_no         => to_char(k.percentile)
-							  , pv_descripcion    => 'PRIMOS_SUMA'
-							  , pv_comments       => 'percentile: '||pn_percentile||' primos_cnt: '||pn_primos_cnt
-							   );			
-	end loop;	
-	
-
-		x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
-exception	
-  when others then
-	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
-	raise;		
-end get_primos_suma;
-
---!guardar las estadisticas de la suma de los numeros primos en base a su posicion y case						  
-procedure pm_primos_por_posicion_handler(pv_drawing_type    varchar2 default 'mrtr'
-								       , pn_percentile		number default 0.25
-									   , pn_primos_cnt		number default 2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pm_primos_por_posicion_handler';	
-	ln$err_code				number := -1;
-begin
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_details where description = 'PRIMOS_SUMA';
-	
-	for decena in 1..7 loop
-		--!recuperando las posiciones de los numeros primos
-		for t in c_decenas (pv_drawing_type => pv_drawing_type
-						  , pn_drawing_case => decena) loop
-			
-			--!obtener la suma de incidencias de numeros primos en base al case 
-			get_primos_suma(pn_drawing_case   => decena
-						  , pn_primos_cnt	  => pn_primos_cnt
-						  , pn_plan_jugada_id => t.id
-						  , pn_percentile	  => pn_percentile
-						  , x_err_code 	      => ln$err_code);		 
-		end loop;
-	end loop;
-    commit;	
-exception 
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end pm_primos_por_posicion_handler;
-
---!conteo del numero de posiciones favorables en el resultado
-function get_contar_favorables(pv_pos1 				VARCHAR2
-							 , pv_pos2 				VARCHAR2
-							 , pv_pos3 				VARCHAR2
-							 , pv_pos4 				VARCHAR2
-							 , pv_pos5 				VARCHAR2
-							 , pv_pos6 				VARCHAR2) return number is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'get_contar_favorables';
-	CV$STRING				constant varchar2(1) := 'X';
-	ln$nf_cnt				number := 0;
-begin
-	if pv_pos1 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;
-	
-	if pv_pos2 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;
-
-	if pv_pos3 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;
-
-	if pv_pos4 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;
-
-	if pv_pos5 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;
-
-	if pv_pos6 = CV$STRING then
-		ln$nf_cnt := ln$nf_cnt + 1;
-	end if;	
-	
-	return ln$nf_cnt;
-exception 
-  when others then
-	return -1;
-end get_contar_favorables;
-
---!procedimiento para crear patrones basados en numeros favorables para ser insertados en la tabla plan_jugada_details
---!ejecutado manualmente por medio de la informacion del tab FAVORABLES
-procedure gl_numeros_favobles_handler(pn_drawing_case		NUMBER
-									, pv_pos1 				VARCHAR2
-									, pv_pos2 				VARCHAR2
-									, pv_pos3 				VARCHAR2
-									, pv_pos4 				VARCHAR2
-									, pv_pos5 				VARCHAR2
-									, pv_pos6 				VARCHAR2
-									, pn_resultados_cnt     NUMBER
-									, pn_priority_flag      NUMBER DEFAULT NULL
-									, pv_drawing_type       VARCHAR2 DEFAULT 'mrtr'
-									 ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'gl_numeros_favobles_handler';
-	ln$max_drawing_id       number := 0;
-	ln$sum_nf				number := 0;
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-	end if;
-	
-	--!conteo del numero de posiciones favorables en el resultado
-    ln$sum_nf := get_contar_favorables(pv_pos1 => pv_pos1
-									 , pv_pos2 => pv_pos2
-									 , pv_pos3 => pv_pos3
-									 , pv_pos4 => pv_pos4
-									 , pv_pos5 => pv_pos5
-									 , pv_pos6 => pv_pos6); 
-	
-	--!inicializando variable global
-	gn$ins_cnt := 0;
-	
-	--!recuperando el id del ultimo soteo
-	ln$max_drawing_id := get_max_drawing_id (pv_drawing_type => pv_drawing_type);
-	
-	--!cursor para recuperar los rangos de la decena por posicion
-	for d in c_decena_rango (pv_drawing_type => pv_drawing_type
-					       , pn_drawing_case => pn_drawing_case) loop
-		if GB$SHOW_PROC_NAME then
-			dbms_output.put_line('pn_drawing_case: '||pn_drawing_case||' dedena: '||d.pos11||'-'||d.pos12||' $ '||d.pos21||'-'||d.pos22||' $ '||d.pos31||'-'||d.pos32||' $ '||d.pos41||'-'||d.pos42||' $ '||d.pos51||'-'||d.pos52||' $ '||d.pos61||'-'||d.pos62);							   										   
-		end if;		
-			ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-								  , pn_plan_jugada_id => d.id
-								  , pv_pos1           => nvl(pv_pos1,'.')
-								  , pv_pos2           => nvl(pv_pos2,'.')
-								  , pv_pos3           => nvl(pv_pos3,'.')
-								  , pv_pos4           => nvl(pv_pos4,'.')
-								  , pv_pos5           => nvl(pv_pos5,'.')
-								  , pv_pos6           => nvl(pv_pos6,'.')
-								  , pv_descripcion    => 'PATRON_NUMEROS_FAVORABLES'
-								  , pv_comments       => 'MAXID: '||to_char(ln$max_drawing_id)
-								  , pv_seq_no         => ln$sum_nf
-								  , pn_resultados_cnt => pn_resultados_cnt
-								  );
-	end loop;
-	dbms_output.put_line(gn$ins_cnt||' rows inserted');
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end gl_numeros_favobles_handler;
-
-
---!insert de de conteo de numeros inpares y pares, terminaciones por decena en la tabla plan_jugada_details
---!este insert se crea en tomando el top 3 de los conteos por decena que arroja 
---!query para analizar las pares e inpares por decena 
-procedure ins_plan_jugada_dtl_handler(pv_drawing_type      	VARCHAR2 DEFAULT 'mrtr'
-								    , pv_description       	VARCHAR2
-								    , pn_drawing_case		NUMBER
-								    , pn_attribute1_cnt		NUMBER
-								    , pn_attribute2_cnt		NUMBER DEFAULT NULL
-									, pn_attribute3_cnt		NUMBER DEFAULT NULL
-									, pn_attribute4_cnt		NUMBER DEFAULT NULL
-									, pn_attribute5_cnt		NUMBER DEFAULT NULL
-									, pn_attribute6_cnt		NUMBER DEFAULT NULL
-								    , pn_jugadas_cnt		NUMBER
-								    , pn_resultados_cnt    	NUMBER
-									, pv_flag1				VARCHAR2 DEFAULT NULL
-								  ) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_plan_jugada_dtl_handler';
-begin
-	if GB$SHOW_PROC_NAME then
-		dbms_output.put_line(LV$PROCEDURE_NAME);
-	end if;		
-
-	--!cursor para recuperar los rangos de la decena por posicion
-	for d in c_decena_rango (pv_drawing_type => pv_drawing_type
-			 		       , pn_drawing_case => pn_drawing_case) loop
-		--!procedimiento para insertar registros en la tabla plan_jugada_details
-		ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-							  , pn_plan_jugada_id => d.id
-							  , pv_pos1			  => pn_attribute1_cnt
-							  , pv_pos2			  => pn_attribute2_cnt
-							  , pv_pos3			  => pn_attribute3_cnt
-							  , pv_pos4			  => pn_attribute4_cnt
-							  , pv_pos5			  => pn_attribute5_cnt
-							  , pv_pos6			  => pn_attribute6_cnt
-							  , pn_jugadas_cnt    => pn_jugadas_cnt
-							  , pn_resultados_cnt => pn_resultados_cnt
-							  , pv_descripcion    => pv_description
-							  , pv_flag1          => pv_flag1 
-							  );
-	end loop;					  
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_plan_jugada_dtl_handler;	
-
---!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-procedure ins_b3_b4_inpar_par_handler (pv_drawing_type      VARCHAR2 DEFAULT 'mrtr') is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_b3_b4_inpar_par_handler';
-	
-	--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-	cursor c_b3_b4 (pn_drawing_case		NUMBER) is
-	with max_rid_tbl as (
-	select max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	), jugadas_tbl as (
-	select drawing_case
-		 , mod(comb3,2) b3
-		 , mod(comb4,2) b4
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where drawing_case = pn_drawing_case
-	   and status = 'Y'
-	   and pn_cnt = 2  
-	 group by drawing_case
-		 , mod(comb3,2)
-		 , mod(comb4,2)
-	), resultados_tbl as (
-	select dr
-		 , mod(comb3,2) b3
-		 , mod(comb4,2) b4
-		 , count(1) rcnt
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2  
-	 group by dr
-		 , mod(comb3,2)
-		 , mod(comb4,2)
-	), middle_tbl as (
-	select j.drawing_case case
-		   , j.b3
-		   , j.b4
-		   , j.jcnt
-		   , (select rcnt from resultados_tbl r where j.drawing_case=r.dr and j.b3=r.b3 and j.b4=r.b4) rcnt
-		from jugadas_tbl j
-	), resultado_percentile_tbl as (
-	select round(percentile_cont(olap_sys.w_common_pkg.CF$PERCENTILE_INI) within group (order by rcnt)) per_rcnt_ini
-	  from middle_tbl
-	), filter_tbl as (
-	select case
-		   , b3
-		   , b4
-		   , jcnt
-		   , rcnt
-	   from middle_tbl
-	   where rcnt > (select per_rcnt_ini from resultado_percentile_tbl)
-	), ultimo_resultado_tbl as (
-	select mod(comb3,2) b3
-		 , mod(comb4,2) b4
-		 , max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2 
-	   and (mod(comb3,2), mod(comb4,2)) in (select b3, b4 from filter_tbl)
-	 group by mod(comb3,2)
-		 , mod(comb4,2)  
-	) select f.case
-		   , f.b3
-		   , f.b4
-		   , f.jcnt
-		   , f.rcnt
-		   , (select max_rid from max_rid_tbl) max_rid
-		   , (select max_rid from ultimo_resultado_tbl ur where ur.b3 = f.b3 and ur.b4 = f.b4) ultimo_rid
-		   , (select max_rid from max_rid_tbl) - (select max_rid from ultimo_resultado_tbl ur where ur.b3 = f.b3 and ur.b4 = f.b4) diferencia
-	   from filter_tbl f
-	order by f.rcnt desc;
-begin
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_details where description = 'B3_B4_INPAR_PAR';
-	
-	for d in 2..7 loop
-		--!cursor para recuperar los rangos de la decena por posicion
-		for t in c_decena_rango (pv_drawing_type => pv_drawing_type
-							   , pn_drawing_case => d) loop
-			--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-			for k in  c_b3_b4 (pn_drawing_case => d) loop
-				--!procedimiento para insertar registros en la tabla plan_jugada_details
-				ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-									  , pn_plan_jugada_id => t.id
-									  , pv_pos1			  => null
-									  , pv_pos2			  => null
-									  , pv_pos3			  => k.b3
-									  , pv_pos4			  => k.b4
-									  , pv_pos5			  => null
-									  , pv_pos6			  => null
-									  , pn_jugadas_cnt    => k.jcnt
-									  , pn_resultados_cnt => k.rcnt
-									  , pv_descripcion    => 'B3_B4_INPAR_PAR' 
-									  , pv_comments       => to_char(k.max_rid) ||' - '||to_char(k.ultimo_rid)||' = '||to_char(k.diferencia)
-									  );
-			end loop;					  
-		end loop;
-	end loop;
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_b3_b4_inpar_par_handler;
-
---!recupera el patron de inpares y pares de la posicion b1, b4 y b6 por decena
-procedure ins_b1_b4_b6_inpar_par_handler (pv_drawing_type      VARCHAR2 DEFAULT 'mrtr') is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_b1_b4_b6_inpar_par_handler';
-	
-	--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-	cursor c_b1_b4_b6 (pn_drawing_case		NUMBER) is
-	with max_rid_tbl as (
-	select max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	), jugadas_tbl as (
-	select drawing_case
-		 , mod(comb1,2) b1
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where drawing_case = pn_drawing_case
-	   and status = 'Y'
-	   and pn_cnt = 2  
-	 group by drawing_case
-		 , mod(comb1,2)
-         , mod(comb4,2)
-		 , mod(comb6,2)
-	), resultados_tbl as (
-	select dr
-		 , mod(comb1,2) b1
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , count(1) rcnt
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2  
-	 group by dr
-		 , mod(comb1,2)
-         , mod(comb4,2)
-		 , mod(comb6,2)
-	), middle_tbl as (
-	select j.drawing_case case
-		   , j.b1
-           , j.b4
-		   , j.b6
-		   , j.jcnt
-		   , (select rcnt from resultados_tbl r where j.drawing_case=r.dr and j.b1=r.b1 and j.b4=r.b4 and j.b6=r.b6) rcnt
-		from jugadas_tbl j
-	), resultado_percentile_tbl as (
-	select round(percentile_cont(olap_sys.w_common_pkg.CF$PERCENTILE_INI) within group (order by rcnt)) per_rcnt_ini
-	  from middle_tbl
-	), filter_tbl as (
-	select case
-		   , b1
-           , b4
-		   , b6
-		   , jcnt
-		   , rcnt
-	   from middle_tbl
-	   where rcnt > (select per_rcnt_ini from resultado_percentile_tbl)
-	), ultimo_resultado_tbl as (
-	select mod(comb1,2) b1
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2 
-	   and (mod(comb1,2), mod(comb4,2), mod(comb6,2)) in (select b1, b4, b6 from filter_tbl)
-	 group by mod(comb1,2)
-		 , mod(comb4,2)  
-         , mod(comb6,2)  
-	) select f.case
-		   , f.b1
-		   , f.b4
-           , f.b6
-		   , f.jcnt
-		   , f.rcnt
-		   , (select max_rid from max_rid_tbl) max_rid
-		   , (select max_rid from ultimo_resultado_tbl ur where ur.b1 = f.b1 and ur.b4 = f.b4 and ur.b6 = f.b6) ultimo_rid
-		   , (select max_rid from max_rid_tbl) - (select max_rid from ultimo_resultado_tbl ur where ur.b1 = f.b1 and ur.b4 = f.b4 and ur.b6 = f.b6) diferencia
-	   from filter_tbl f
-	order by f.rcnt desc;   
-begin
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_details where description = 'B1_B4_B6_INPAR_PAR';
-	
-	for d in 2..7 loop
-		--!cursor para recuperar los rangos de la decena por posicion
-		for t in c_decena_rango (pv_drawing_type => pv_drawing_type
-							   , pn_drawing_case => d) loop
-			--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-			for k in c_b1_b4_b6 (pn_drawing_case => d) loop
-				--!procedimiento para insertar registros en la tabla plan_jugada_details
-				ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-									  , pn_plan_jugada_id => t.id
-									  , pv_pos1			  => k.b1
-									  , pv_pos2			  => null
-									  , pv_pos3			  => null
-									  , pv_pos4			  => k.b4
-									  , pv_pos5			  => null
-									  , pv_pos6			  => k.b6
-									  , pn_jugadas_cnt    => k.jcnt
-									  , pn_resultados_cnt => k.rcnt
-									  , pv_descripcion    => 'B1_B4_B6_INPAR_PAR' 
-									  , pv_comments       => to_char(k.max_rid) ||' - '||to_char(k.ultimo_rid)||' = '||to_char(k.diferencia)
-									  );
-			end loop;					  
-		end loop;
-	end loop;
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_b1_b4_b6_inpar_par_handler;
-
-
---!recupera el patron de inpares y pares de la posicion b1, b3, b4 y b6 por decena
-procedure ins_b1_b3_b4_b6_inpar_par_hand (pv_drawing_type      VARCHAR2 DEFAULT 'mrtr') is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_b1_b3_b4_b6_inpar_par_hand';
-	
-	--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-	cursor c_b1_b3_b4_b6 (pn_drawing_case		NUMBER) is
-	with max_rid_tbl as (
-	select max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	), jugadas_tbl as (
-	select drawing_case
-		 , mod(comb1,2) b1
-         , mod(comb3,2) b3
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where drawing_case = pn_drawing_case
-	   and status = 'Y'
-	   and pn_cnt = 2  
-	 group by drawing_case
-		 , mod(comb1,2)
-         , mod(comb3,2)
-         , mod(comb4,2)
-		 , mod(comb6,2)
-	), resultados_tbl as (
-	select dr
-		 , mod(comb1,2) b1
-         , mod(comb3,2) b3
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , count(1) rcnt
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2  
-	 group by dr
-		 , mod(comb1,2)
-         , mod(comb3,2)
-         , mod(comb4,2)
-		 , mod(comb6,2)
-	), middle_tbl as (
-	select j.drawing_case case
-		   , j.b1
-           , j.b3
-           , j.b4
-		   , j.b6
-		   , j.jcnt
-		   , (select rcnt from resultados_tbl r where j.drawing_case=r.dr and j.b1=r.b1 and j.b3=r.b3 and j.b4=r.b4 and j.b6=r.b6) rcnt
-		from jugadas_tbl j
-	), resultado_percentile_tbl as (
-	select round(percentile_cont(olap_sys.w_common_pkg.CF$PERCENTILE_INI) within group (order by rcnt)) per_rcnt_ini
-	  from middle_tbl
-	), filter_tbl as (
-	select case
-		   , b1
-           , b3
-           , b4
-		   , b6
-		   , jcnt
-		   , rcnt
-	   from middle_tbl
-	   where rcnt > (select per_rcnt_ini from resultado_percentile_tbl)
-	), ultimo_resultado_tbl as (
-	select mod(comb1,2) b1
-         , mod(comb3,2) b3
-         , mod(comb4,2) b4
-		 , mod(comb6,2) b6
-		 , max(gambling_id) max_rid
-	  from olap_sys.pm_mr_resultados_v2
-	 where dr = pn_drawing_case
-	   and pn_cnt = 2 
-	   and (mod(comb1,2), mod(comb3,2), mod(comb4,2), mod(comb6,2)) in (select b1, b3, b4, b6 from filter_tbl)
-	 group by mod(comb1,2)
-		 , mod(comb3,2)
-         , mod(comb4,2)  
-         , mod(comb6,2)  
-	) select f.case
-		   , f.b1
-           , f.b3
-		   , f.b4
-           , f.b6
-		   , f.jcnt
-		   , f.rcnt
-		   , (select max_rid from max_rid_tbl) max_rid
-		   , (select max_rid from ultimo_resultado_tbl ur where ur.b1 = f.b1 and ur.b3 = f.b3 and ur.b4 = f.b4 and ur.b6 = f.b6) ultimo_rid
-		   , (select max_rid from max_rid_tbl) - (select max_rid from ultimo_resultado_tbl ur where ur.b1 = f.b1 and ur.b3 = f.b3 and ur.b4 = f.b4 and ur.b6 = f.b6) diferencia
-	   from filter_tbl f
-	order by f.rcnt desc;  
-begin
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_details where description = 'B1_B3_B4_B6_INPAR_PAR';
-	
-	for d in 2..7 loop
-		--!cursor para recuperar los rangos de la decena por posicion
-		for t in c_decena_rango (pv_drawing_type => pv_drawing_type
-							   , pn_drawing_case => d) loop
-			--!recupera el patron de inpares y pares de la posicion b3 y b4 por decena
-			for k in c_b1_b3_b4_b6 (pn_drawing_case => d) loop
-				--!procedimiento para insertar registros en la tabla plan_jugada_details
-				ins_plan_jugada_details(pv_drawing_type	  => pv_drawing_type
-									  , pn_plan_jugada_id => t.id
-									  , pv_pos1			  => k.b1
-									  , pv_pos2			  => null
-									  , pv_pos3			  => k.b3
-									  , pv_pos4			  => k.b4
-									  , pv_pos5			  => null
-									  , pv_pos6			  => k.b6
-									  , pn_jugadas_cnt    => k.jcnt
-									  , pn_resultados_cnt => k.rcnt
-									  , pv_descripcion    => 'B1_B3_B4_B6_INPAR_PAR' 
-									  , pv_comments       => to_char(k.max_rid) ||' - '||to_char(k.ultimo_rid)||' = '||to_char(k.diferencia)
-									  );
-			end loop;					  
-		end loop;
-	end loop;
-	commit;		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_b1_b3_b4_b6_inpar_par_hand;
-
-procedure ins_b1_b4_b6_ca_percentile(pn_sorteo_id		NUMBER
-								   , pn_max_drawing_id  NUMBER 
-								   , pn_plan_jugada_id  NUMBER
-								   , pf_percentile_ini	FLOAT
-								   , pf_percentile_end	FLOAT
-								   , xn_index IN OUT NOCOPY NUMBER) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_b1_b4_b6_ca_percentile';
-	
-	--!percentiles separados
-	cursor c_percentile (pf_percentile_ini		float
-					   , pf_percentile_end		float
-					   , pn_sorteo_id           number) is
-	with ca_resultados_tbl as (
-	select gambling_id
-		 , nvl(c1_ca,0) ca1
-		 , nvl(c2_ca,0) ca2
-		 , nvl(c3_ca,0) ca3
-		 , nvl(c4_ca,0) ca4
-		 , nvl(c5_ca,0) ca5
-		 , nvl(c6_ca,0) ca6
-		 , nvl(sum_ca,0) ca_sum
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > pn_sorteo_id
-	), ca1_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca1)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca1)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca1 > 0 
-	), ca2_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca2)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca2)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca2 > 0 
-	), ca3_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca3)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca3)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca3 > 0 
-	), ca4_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca4)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca4)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca4 > 0 
-	), ca5_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca5)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca5)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca5 > 0 
-	), ca6_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca6)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca6)) ca_perc_end
-	  from ca_resultados_tbl
-	 where ca6 > 0 
-	), ca_union_tbl as (
-	select pf_percentile_ini perc_ini
-		   , pf_percentile_end perc_end
-		   , 'CA1' ca_type
-		   , ca_perc_ini
-		   , ca_perc_end
-		from ca1_percentile_tbl 
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'CA2' ca_type
-		 , ca_perc_ini
-		 , ca_perc_end
-	  from ca2_percentile_tbl
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'CA3' ca_type
-		 , ca_perc_ini
-		 , ca_perc_end
-	  from ca3_percentile_tbl
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'CA4' ca_type
-		 , ca_perc_ini
-		 , ca_perc_end
-	  from ca4_percentile_tbl  
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'CA5' ca_type
-		 , ca_perc_ini
-		 , ca_perc_end
-	  from ca5_percentile_tbl  
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'CA6' ca_type
-		 , ca_perc_ini
-		 , ca_perc_end
-	  from ca6_percentile_tbl  
-	), ca1_ca4_cnt_tbl as (
-	select ca1
-		 , ca4
-		 , count(1) jcnt
-	  from ca_resultados_tbl
-	 where ca1 > 0
-	   and ca4 > 0
-	   and ca1 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA1') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA1') 
-	   and ca4 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA4') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA4')  
-	 group by ca1
-		 , ca4
-	), ca1_ca6_cnt_tbl as (
-	select ca1
-		 , ca6
-		 , count(1) jcnt
-	  from ca_resultados_tbl
-	 where ca1 > 0
-	   and ca6 > 0
-	   and ca1 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA1') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA1') 
-	   and ca6 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA6') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA6') 
-	 group by ca1
-		 , ca6
-	), ca1_ca4_ca6_cnt_tbl as (
-	select ca1
-		 , ca4
-		 , ca6
-		 , count(1) jcnt
-	  from ca_resultados_tbl
-	 where ca1 > 0
-	   and ca4 > 0
-	   and ca6 > 0
-	   and ca1 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA1') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA1') 
-	   and ca4 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA4') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA4') 
-	   and ca6 between (select ca_perc_ini from ca_union_tbl where ca_type = 'CA6') and (select ca_perc_end from ca_union_tbl where ca_type = 'CA6')  
-	 group by ca1
-		 , ca4
-		 , ca6
-	), ca1_ca4_cnt_filtrado_tbl as (
-	select ca1
-		 , ca4
-		 , min(ca6) ca6_min
-		 , max(ca6) ca6_max
-		 , count(1) jcnt
-	  from ca1_ca4_ca6_cnt_tbl
-	 group by ca1
-		 , ca4
-	 having count(1) > 1
-	)   select *
-		from ca1_ca4_cnt_filtrado_tbl
-	   order by 1,2; 
-
-	--!filtrado de GL info en base a los rangos de CA
-	cursor c_gl_digitos (pn_ca1			number
-					   , pn_ca4			number
-					   , pn_ca6_ini		number
-					   , pn_ca6_end		number
-						) is
-	with resultado_tbl as (
-	select max(gambling_id) ultimo_id from olap_sys.sl_gamblings
-	), gl_tbl as (
-	select b_type
-		 , digit
-		 , ciclo_aparicion ca
-         , decode(color_ubicacion,1,'R',2,'G',3,'B') fr
-         , decode(color_ley_tercio,1,'R',2,'G',3,'B') lt        
-         , nvl(preferencia_flag,'.') pre
-		 , nvl(pronos_ciclo,-1) pxc
-	  from olap_sys.s_calculo_stats
-	 where drawing_id = (select ultimo_id from resultado_tbl) 
-	), b1_tbl as (
-	select b_type
-		 , digit
-		 , ca
-         , fr
-         , lt        
-         , pre
-		 , pxc
-	  from gl_tbl
-	 where b_type = 'B1' 
-	   and ca = pn_ca1
-	), b4_tbl as (
-	select b_type
-		 , digit
-		 , ca
-         , fr
-         , lt        
-         , pre
-		 , pxc         
-	  from gl_tbl
-	 where b_type = 'B4' 
-	   and ca = pn_ca4
-	), b6_tbl as (
-	select b_type
-		 , digit
-		 , ca
-         , fr
-         , lt        
-         , pre
-		 , pxc
-	  from gl_tbl
-	 where b_type = 'B6' 
-	   and ca between pn_ca6_ini and pn_ca6_end 
-	)
-	select b_type, digit, ca, fr, lt, pre, pxc
-		from b1_tbl
-	union
-	select b_type, digit, ca, fr, lt, pre, pxc
-		from b4_tbl
-	union
-	select b_type, digit, ca, fr, lt, pre, pxc
-		from b6_tbl; 	   
-begin	
-	xn_index := 1;
-	for s in c_percentile (pf_percentile_ini => pf_percentile_ini
-					     , pf_percentile_end => pf_percentile_end
-					     , pn_sorteo_id      => pn_sorteo_id
-						 ) loop
-		dbms_output.put_line('index: '||xn_index||' - '||s.ca1||' - '||s.ca4||' - '||s.ca6_min||' - '||s.ca6_max||' - '||s.jcnt);	
-		--!filtrado de GL info en base a los rangos de CA
-		for c in c_gl_digitos (pn_ca1     => s.ca1
-							 , pn_ca4     => s.ca4
-							 , pn_ca6_ini => s.ca6_min
-							 , pn_ca6_end => s.ca6_max) loop
-			dbms_output.put_line(c.b_type||' - '||c.digit||' - '||c.ca);	
-				ins_plan_jugada_details(pv_drawing_type	  => 'mrtr'
-									  , pn_plan_jugada_id => pn_plan_jugada_id
-									  , pv_pos1			  => c.digit
-									  , pv_pos2			  => c.ca
-									  , pv_pos3			  => c.fr
-									  , pv_pos4			  => c.lt
-									  , pv_pos5			  => c.pre
-									  , pv_pos6			  => xn_index
-									  , pv_seq_no		  => pn_max_drawing_id
-									  , pv_sort_execution => c.pxc
-									  , pv_flag1          => substr(c.b_type,2,1)
-									  , pv_descripcion    => 'B1_B4_B6_PERCENTILE_CNT' 
-									  , pv_comments       => 'PERINI: '||to_char(pf_percentile_ini)||', PEREND: '||to_char(pf_percentile_end)
-									  );			
-		end loop;					 
-		xn_index := xn_index + 1;
-	end loop;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end ins_b1_b4_b6_ca_percentile;
-
---!borrando info que no contenga B1, B4 y B6
-procedure del_b1_b4_b6_ca_percentile(pn_index		number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'del_b1_b4_b6_ca_percentile';
-begin
-	for d in 1..pn_index loop
-		olap_sys.w_common_pkg.g_rowcnt := 0;
-		select count(distinct jd.flag1) cnt
-		  into olap_sys.w_common_pkg.g_rowcnt
-		  from olap_sys.plan_jugada_details jd
-			 , olap_sys.plan_jugadas pj 
-		 where pj.drawing_type = jd.drawing_type 
-		   and pj.id = jd.plan_jugada_id 
-		   and jd.status = 'A'
-		   and pj.status = 'A'
-		   and jd.description = 'B1_B4_B6_PERCENTILE_CNT'
-		   and pj.drawing_case = 0
-		   and jd.pos6 = d;	
-			
-		--!borrando info que no contenga B1, B4 y B6	
-		if olap_sys.w_common_pkg.g_rowcnt < 3 then
-			delete olap_sys.plan_jugada_details 
-			 where description = 'B1_B4_B6_PERCENTILE_CNT'
-			   and pos6 = d;
-		end if;		   
-	end loop;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 		
-end del_b1_b4_b6_ca_percentile;
-
---!actualizar valores de CA_SUM y COMB_SUM en la tabla plan_jgadas
-procedure upd_b1_b4_b6_ca_percentile(pn_sorteo_id		NUMBER
-								   , pn_max_drawing_id  NUMBER 
-								   , pn_plan_jugada_id  NUMBER
-								   , pf_percentile_ini	FLOAT
-								   , pf_percentile_end	FLOAT) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_b1_b4_b6_ca_percentile';
-		--!percentiles separados
-	cursor c_percentile (pf_percentile_ini		float
-					   , pf_percentile_end		float
-					   , pn_sorteo_id           number) is
-	--!percentiles separados
-	with ca_resultados_tbl as (
-	select gambling_id
-		 , nvl(c1_ca,0) ca1
-		 , nvl(c2_ca,0) ca2
-		 , nvl(c3_ca,0) ca3
-		 , nvl(c4_ca,0) ca4
-		 , nvl(c5_ca,0) ca5
-		 , nvl(c6_ca,0) ca6
-		 , nvl(sum_ca,0) ca_sum
-		 , comb_sum 
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > pn_sorteo_id
-	), ca_sum_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by ca_sum)) ca_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by ca_sum)) ca_perc_end
-	  from ca_resultados_tbl 
-	), comb_sum_percentile_tbl as (
-	select round(percentile_cont(pf_percentile_ini) within group (order by comb_sum)) comb_perc_ini   
-		 , round(percentile_cont(pf_percentile_end) within group (order by comb_sum)) comb_perc_end
-	  from ca_resultados_tbl
-	), ca_union_tbl as (
-	select pf_percentile_ini perc_ini
-		   , pf_percentile_end perc_end
-		   , 'CA_SUM' ca_type
-		   , ca_perc_ini
-		   , ca_perc_end
-		from ca_sum_percentile_tbl 
-	union
-	select pf_percentile_ini perc_ini
-		 , pf_percentile_end perc_end
-		 , 'COMB_SUM' ca_type
-		 , comb_perc_ini
-		 , comb_perc_end
-	  from comb_sum_percentile_tbl
-	) select ca_type
-		   , ca_perc_ini
-		   , ca_perc_end
-		from ca_union_tbl; 					   
-begin
-	--!limpiando info de la tabla
-	update olap_sys.plan_jugadas
-	   set pos3 = null
-		 , pos4 = null
-		 , seq_no = 0
-		 , comments = null
-	 where description = 'B1_B4_B6_PERCENTILE_CNT'
-	   and drawing_case = 0;	
-
-	for s in c_percentile (pf_percentile_ini => pf_percentile_ini
-					     , pf_percentile_end => pf_percentile_end
-					     , pn_sorteo_id      => pn_sorteo_id
-						 ) loop
-		--dbms_output.put_line(s.ca1||' - '||s.ca4||' - '||s.ca6_min||' - '||s.ca6_max||' - '||s.jcnt);	
-		if s.ca_type = 'CA_SUM' then
-			update olap_sys.plan_jugadas
-			   set pos1 = s.ca_perc_ini
-				 , pos2 = s.ca_perc_end
-				 , seq_no = pn_max_drawing_id
-				 , comments = 'PERINI: '||to_char(pf_percentile_ini)||', PEREND: '||to_char(pf_percentile_end) 
-			 where description = 'B1_B4_B6_PERCENTILE_CNT'
-			   and drawing_case = 0;		
-		else
-			update olap_sys.plan_jugadas
-			   set pos3 = s.ca_perc_ini
-				 , pos4 = s.ca_perc_end
-				 , seq_no = pn_max_drawing_id
-				 , comments = 'PERINI: '||to_char(pf_percentile_ini)||', PEREND: '||to_char(pf_percentile_end) 
-			 where description = 'B1_B4_B6_PERCENTILE_CNT'
-			   and drawing_case = 0;		
-		end if;
-	end loop;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end upd_b1_b4_b6_ca_percentile;
-	
-	
---!recuperar los digitos en base al rango del percentile y al historico de resultados
-procedure b1_b4_b6_ca_percentile_handler(pf_percentile_ini	FLOAT DEFAULT 0.1
-									   , pf_percentile_end	FLOAT DEFAULT 0.8) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_b1_b4_b6_ca_percentile';
-	CN$SORTEO_ID			constant number := 594;
-	ln$max_drawing_id		number := 0;
-	ln$plan_jugada_id		number := 503;
-begin
-	--!limpiando la tabla
-	delete olap_sys.plan_jugada_details where description = 'B1_B4_B6_PERCENTILE_CNT';
-	ln$max_drawing_id := get_max_drawing_id;
-	
-	olap_sys.w_common_pkg.g_index := 0;
-	ins_b1_b4_b6_ca_percentile(pn_sorteo_id      => CN$SORTEO_ID
-							 , pn_max_drawing_id => ln$max_drawing_id
-							 , pn_plan_jugada_id => ln$plan_jugada_id
-							 , pf_percentile_ini => pf_percentile_ini
-							 , pf_percentile_end => pf_percentile_end
-							 , xn_index          => olap_sys.w_common_pkg.g_index);
-	dbms_output.put_line('xn_index: '||olap_sys.w_common_pkg.g_index);	
-
-	--!borrando info que no contenga B1, B4 y B6
-	del_b1_b4_b6_ca_percentile(pn_index	=> olap_sys.w_common_pkg.g_index); 
-
-	--!actualizar valores de CA_SUM y COMB_SUM en la tabla plan_jgadas
-	upd_b1_b4_b6_ca_percentile(pn_sorteo_id      => CN$SORTEO_ID
-							 , pn_max_drawing_id => ln$max_drawing_id
-							 , pn_plan_jugada_id => ln$plan_jugada_id
-							 , pf_percentile_ini => pf_percentile_ini
-							 , pf_percentile_end => pf_percentile_end);
-	commit;	
-end b1_b4_b6_ca_percentile_handler;
-
---!proceso a ejecutarse despues del proceso jugadas_interface_handler
---!filtrar las jugadas que no cumplan con los metadatos de la descripcion PR_PA_IN_C1_C6 y CENTROS_C3_C4
-procedure val_pr_pa_in_c1_c6_pr_pa (pv_val_pr_pa_in_c1_c6  varchar2
-								  , pv_val_centros_c3_c4   varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'val_pr_pa_in_c1_c6_pr_pa';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-PA';
-	
-	--!('PR','PA')
-	cursor c_not_exists (pv_description		varchar2) is
-	with interface_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and mod(comb6,2) = 0
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos2 = i.tcomb2
-					  and jd.pos3 = i.tcomb3
-					  and jd.pos4 = i.tcomb4
-					  and jd.pos5 = i.tcomb5
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);
-
-	cursor c_exists (pv_description		varchar2) is
-	with interface_tbl as (  
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and mod(comb6,2) = 0
-		   and jugar_flag = 'Y'
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos3 = i.comb3
-					  and jd.pos4 = i.comb4
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);							  
-begin
-	if pv_val_pr_pa_in_c1_c6 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;
-		for k in c_not_exists (pv_description => gv$pr_pa_in_c1_c6) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'Y'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount; 
-		end loop;
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$pr_pa_in_c1_c6);
-		commit;
-	end if;
-
-	if pv_val_centros_c3_c4 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;	
-		for k in c_exists (pv_description => gv$centros_c3_c4) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'N'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount;  
-		end loop;	
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$centros_c3_c4);
-		commit;
-	end if;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end val_pr_pa_in_c1_c6_pr_pa;	
-
---!proceso a ejecutarse despues del proceso jugadas_interface_handler
---!filtrar las jugadas que no cumplan con los metadatos de la descripcion PR_PA_IN_C1_C6 y CENTROS_C3_C4
-procedure val_pr_pa_in_c1_c6_pr_in (pv_val_pr_pa_in_c1_c6  varchar2
-								  , pv_val_centros_c3_c4   varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'val_pr_pa_in_c1_c6_pr_in';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-IN';	
-	
-	--!('PR','IN')
-	cursor c_not_exists (pv_description		varchar2) is
-	with interface_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos2 = i.tcomb2
-					  and jd.pos3 = i.tcomb3
-					  and jd.pos4 = i.tcomb4
-					  and jd.pos5 = i.tcomb5
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);
-						  
-	cursor c_exists (pv_description		varchar2) is
-	with interface_tbl as (  
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-		   and jugar_flag = 'Y'   
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos3 = i.comb3
-					  and jd.pos4 = i.comb4
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);							  
-begin
-	if pv_val_pr_pa_in_c1_c6 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;
-		for k in c_not_exists (pv_description => gv$pr_pa_in_c1_c6) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'Y'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount; 
-		end loop;
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$pr_pa_in_c1_c6);
-		commit;
-	end if;
-
-	if pv_val_centros_c3_c4 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;	
-		for k in c_exists (pv_description => gv$centros_c3_c4) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'N'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount;  
-		end loop;	
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$centros_c3_c4);
-		commit;
-	end if;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end val_pr_pa_in_c1_c6_pr_in;
-
---!proceso a ejecutarse despues del proceso jugadas_interface_handler
---!filtrar las jugadas que no cumplan con los metadatos de la descripcion PR_PA_IN_C1_C6
-procedure val_pr_pa_in_c1_c6_pa_pa (pv_val_pr_pa_in_c1_c6  varchar2
-								  , pv_val_centros_c3_c4   varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'val_pr_pa_in_c1_c6_pa_pa';
-	CV$TASK_NAME		    constant varchar2(30) := 'PA-PA';
-		
-	--!('PA','PA')
-	cursor c_not_exists (pv_description		varchar2) is
-	with interface_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 1 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos2 = i.tcomb2
-					  and jd.pos3 = i.tcomb3
-					  and jd.pos4 = i.tcomb4
-					  and jd.pos5 = i.tcomb5
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);
-
-	cursor c_exists (pv_description		varchar2) is
-	with interface_tbl as (  
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 1 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-		   and jugar_flag = 'Y'
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos3 = i.comb3
-					  and jd.pos4 = i.comb4
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);							  
-begin
-	if pv_val_pr_pa_in_c1_c6 = 'Y' then
-	olap_sys.w_common_pkg.g_updcnt := 0;
-		for k in c_not_exists (pv_description => gv$pr_pa_in_c1_c6) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'Y'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount; 
-		end loop;
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$pr_pa_in_c1_c6);
-		commit;
-	end if;
-
-	if pv_val_centros_c3_c4 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;	
-		for k in c_exists (pv_description => gv$centros_c3_c4) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'N'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount;  
-		end loop;	
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$centros_c3_c4);
-		commit;
-	end if;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end val_pr_pa_in_c1_c6_pa_pa;
-
---!proceso a ejecutarse despues del proceso jugadas_interface_handler
---!filtrar las jugadas que no cumplan con los metadatos de la descripcion PR_PA_IN_C1_C6
-procedure val_pr_pa_in_c1_c6_pa_in  (pv_val_pr_pa_in_c1_c6  varchar2
-								   , pv_val_centros_c3_c4   varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'val_pr_pa_in_c1_c6_pa_in';
-	CV$TASK_NAME		    constant varchar2(30) := 'PA-IN';
-	
-	--!('PA','IN')
-	cursor c_not_exists (pv_description		varchar2) is
-	with interface_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1 
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos2 = i.tcomb2
-					  and jd.pos3 = i.tcomb3
-					  and jd.pos4 = i.tcomb4
-					  and jd.pos5 = i.tcomb5
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);	
-
-	cursor c_exists (pv_description		varchar2) is
-	with interface_tbl as (  
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-		   and jugar_flag = 'Y'			   
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos3 = i.comb3
-					  and jd.pos4 = i.comb4
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);							  
-begin
-	if pv_val_pr_pa_in_c1_c6 = 'Y' then
-	olap_sys.w_common_pkg.g_updcnt := 0;
-		for k in c_not_exists (pv_description => gv$pr_pa_in_c1_c6) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'Y'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount; 
-		end loop;
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$pr_pa_in_c1_c6);
-		commit;
-	end if;
-
-	if pv_val_centros_c3_c4 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;	
-		for k in c_exists (pv_description => gv$centros_c3_c4) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'N'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount;  
-		end loop;	
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$centros_c3_c4);
-		commit;
-	end if;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end val_pr_pa_in_c1_c6_pa_in;
-
---!proceso a ejecutarse despues del proceso jugadas_interface_handler
---!filtrar las jugadas que no cumplan con los metadatos de la descripcion PR_PA_IN_C1_C6
-procedure val_pr_pa_in_c1_c6_pr_pr (pv_val_pr_pa_in_c1_c6  varchar2
-								  , pv_val_centros_c3_c4   varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'val_pr_pa_in_c1_c6_pr_pr';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-PR';
-	
-	--!('PR','PR')
-	cursor c_not_exists (pv_description		varchar2) is
-	with interface_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-			   case when mod(comb1,2) = 0 then 0 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 	   
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos2 = i.tcomb2
-					  and jd.pos3 = i.tcomb3
-					  and jd.pos4 = i.tcomb4
-					  and jd.pos5 = i.tcomb5
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);
-
-	cursor c_exists (pv_description		varchar2) is
-	with interface_tbl as (  
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-			   case when mod(comb1,2) = 0 then 'PA' else 
-			   case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-			   case when mod(comb2,2) = 0 then 'PA' else 
-			   case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-			   case when mod(comb3,2) = 0 then 'PA' else 
-			   case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-			   case when mod(comb4,2) = 0 then 'PA' else 
-			   case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-			   case when mod(comb5,2) = 0 then 'PA' else 
-			   case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-			 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-			   case when mod(comb6,2) = 0 then 'PA' else 
-			   case when mod(comb6,2) > 0 then 'IN' end end end tcomb6 
-			 , gl_id  
-		  from olap_sys.gl_interface i
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-			   case when mod(comb1,2) = 0 then 0 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1
-		   and jugar_flag = 'Y'			   
-	) select i.gl_id 
-		from interface_tbl i
-	   where exists (select 1
-					   from olap_sys.plan_jugada_details jd                          
-						, olap_sys.plan_jugadas pj 
-					where pj.drawing_type = jd.drawing_type 
-					  and pj.id = jd.plan_jugada_id 
-					  and jd.status = 'A'
-					  and pj.status = 'A'
-					  and jd.description = pv_description
-					  and jd.pos1 = i.tcomb1
-					  and jd.pos3 = i.comb3
-					  and jd.pos4 = i.comb4
-					  and jd.pos6 = i.tcomb6  
-					  and pj.drawing_case = i.drawing_case);							  
-begin
-	if pv_val_pr_pa_in_c1_c6 = 'Y' then
-	olap_sys.w_common_pkg.g_updcnt := 0;
-		for k in c_not_exists (pv_description => gv$pr_pa_in_c1_c6) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'Y'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount; 
-		end loop;
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$pr_pa_in_c1_c6);
-		commit;
-	end if;
-
-	if pv_val_centros_c3_c4 = 'Y' then
-		olap_sys.w_common_pkg.g_updcnt := 0;	
-		for k in c_exists (pv_description => gv$centros_c3_c4) loop
-			update olap_sys.gl_interface
-			   set jugar_flag = 'N'
-			 where gl_id = k.gl_id;
-			olap_sys.w_common_pkg.g_updcnt := sql%rowcount;  
-		end loop;	
-		dbms_output.put_line(olap_sys.w_common_pkg.g_updcnt||' '||CV$TASK_NAME||' rows updated. '||gv$centros_c3_c4);
-		commit;
-	end if;
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end val_pr_pa_in_c1_c6_pr_pr;
-
---!generar las jugadas para insertarlas en la tabla de interface
-procedure jugadas_interface_handler (pv_val_pr_pa_in_c1_c6  varchar2 default 'Y'
-								   , pv_val_centros_c3_c4   varchar2 default 'Y') is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'jugadas_interface_handler';
-	CF$PERCENTILE_INI       constant float := 0.25;
-	CF$PERCENTILE_END		constant float := 0.75;
-	
-	ln$ultimo_sorteo_id		number:= 0;
-/*	cursor c_main is
-	--!id del ultimo resultado
-	with ultimo_resultado_tbl as (
-	select max(gambling_id) max_id
-	  from olap_sys.sl_gamblings
-	)--!info de gigaloterias del ultimo sorteo de digitos que no han tenido cambio de posicion
-	, gl_tbl as (
-	select *
-	  from olap_sys.s_calculo_stats
-	 where drawing_id = (select max_id from ultimo_resultado_tbl)
-	   and chng_posicion is null
-	)--!extremos
-	, r_extremos_tbl as (
-	select comb1, comb6, (comb6 - comb1) -1 ext, count(1) rcnt
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > 594
-	   and gl_cnt in (5,6)
-	   and comb1 <= 9
-	   and comb6 >= 30
-	 group by comb1, comb6, (comb6 - comb1) -1  
-	), r_extremos_percentile_tbl as (
-	select comb1
-		 ,  percentile_cont(CF$PERCENTILE_INI) within group (order by rcnt) perc_rcnt
-	  from r_extremos_tbl
-	 group by comb1 
-	), r_extremos_finales_tbl as (
-	select comb1
-		 , comb6
-		from r_extremos_tbl r
-	  where r.rcnt > (select perc_rcnt from r_extremos_percentile_tbl ep where ep.comb1=r.comb1)   
-	)--!percentiles de ciclos de aparicion para b1, b6 y las suma 
-	, r_ca_tbl as (
-	select nvl(c1_ca,0) ca1,  nvl(c6_ca,0) ca6, sum_ca ca_sum
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > 594
-	   and gl_cnt in (5,6)
-	   and comb1 <= 9
-	   and comb6 >= 30  
-	), r_ca_percentile_tbl as (
-	select percentile_cont(CF$PERCENTILE_INI) within group (order by ca1) r_perc_ca1
-		 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca6) r_perc_ca6
-		 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca_sum) r_perc_ca_sum
-	  from r_ca_tbl
-	), --!percentile de la suma de todos los digitos
-	r_comb_sum_tbl as (
-	select comb_sum
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > 594
-	   and gl_cnt in (5,6)
-	   and comb1 <= 9
-	   and comb6 >= 30   
-	), r_comb_sum_percentile_tbl as (
-	select percentile_cont(CF$PERCENTILE_INI) within group (order by comb_sum) r_perc_comb_sum
-	  from r_comb_sum_tbl
-	)
-	--!jugadas de digitos que no han tenido cambio en su posicion
-	, jugadas_tbl as (
-	select comb1, comb2, comb3, comb4, comb5, comb6, comb_sum, co_cnt, drawing_case, (comb6 - comb1) -1 extremos
-	     , pn_cnt primo_cnt, none_cnt inpar_cnt, par_cnt, co_cnt consecutivo_cnt, t1_cnt||'|'||t2_cnt terminacion
-	  from olap_sys.w_combination_responses_fs
-	 where status = 'Y'
-	   and pn_cnt = 2
-	   and comb1 in (select digit from gl_tbl where b_type = 'B1')
-	   and comb2 in (select digit from gl_tbl where b_type = 'B2')
-	   and comb3 in (select digit from gl_tbl where b_type = 'B3')
-	   and comb4 in (select digit from gl_tbl where b_type = 'B4')	
-	   and comb5 in (select digit from gl_tbl where b_type = 'B5')
-	   and comb6 in (select digit from gl_tbl where b_type = 'B6')
-	   and comb1 <= 9
-	   and comb4 between 20 and 29
-	   and comb6 between 30 and 39
-       and (comb1,comb6) not in (
-								 --!PR-PA
-								 (7,34),
-								 (3,30),
-								 (5,30),
-								 (7,32),
-								 (7,30),
-								 --!PR-IN
-								 (3,35),
-								 (5,35),
-								 (7,35),
-								 (7,33),
-								 --!PA-PA
-								 (6,30),
-								 (8,32),
-								 (8,36),
-								 (6,32),
-								 (4,30),
-								 --!PA-IN
-								 (4,33),
-								 (6,35),
-								 (8,35),
-								 --!PR-PR
-								 (1,31),
-								 (3,31)     
-								 ) 	   
-	)--!transformaciones aplicadas a las jugadas
-	, jugadas_transformaciones_tbl as (
-	select comb1, comb2, comb3, comb4, comb5, comb6, comb_sum, co_cnt, drawing_case, extremos
-		 , nvl((select ciclo_aparicion from gl_tbl where b_type = 'B1' and digit=comb1),0) jca1
-		 , nvl((select ciclo_aparicion from gl_tbl where b_type = 'B6' and digit=comb6),0) jca6
-		 , nvl((select ciclo_aparicion from gl_tbl where b_type = 'B1' and digit=comb1),0)
-		 + nvl((select ciclo_aparicion from gl_tbl where b_type = 'B2' and digit=comb2),0)
-		 + nvl((select ciclo_aparicion from gl_tbl where b_type = 'B3' and digit=comb3),0)
-		 + nvl((select ciclo_aparicion from gl_tbl where b_type = 'B4' and digit=comb4),0)
-		 + nvl((select ciclo_aparicion from gl_tbl where b_type = 'B5' and digit=comb5),0)
-		 + nvl((select ciclo_aparicion from gl_tbl where b_type = 'B6' and digit=comb6),0) jca_sum
-         , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 'PR' else 
-           case when mod(comb1,2) = 0 then 'PA' else 
-           case when mod(comb1,2) > 0 then 'IN' end end end tcomb1
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end tcomb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end tcomb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end tcomb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end tcomb5
-         , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 'PR' else 
-           case when mod(comb6,2) = 0 then 'PA' else 
-           case when mod(comb6,2) > 0 then 'IN' end end end tcomb6
-		 , primo_cnt, inpar_cnt, par_cnt, consecutivo_cnt, terminacion
-	  from jugadas_tbl    
-	)--!aplicando filtros a las jugadas transformadas
-	, jugadas_filtradas_tbl as (
-	select * --13210
-	  from jugadas_transformaciones_tbl
-	 where 1=1
-	   --!filtrando los extremos en base a resultados ganadores
-	   and (comb1, comb6) in (select comb1, comb6 from r_extremos_finales_tbl) --6751 
-	   --!percentiles de ciclos de aparicion
-	   and jca1 >= (select r_perc_ca1 from r_ca_percentile_tbl) --6751
-	   and jca6 >= (select r_perc_ca6 from r_ca_percentile_tbl) --6751
-	   and jca_sum > (select r_perc_ca_sum from r_ca_percentile_tbl) --6493
-	   --!percentile de la suma de todos los digitos
-	   and comb_sum > (select r_perc_comb_sum from r_comb_sum_percentile_tbl) --6381
-	)--!ultimas jugadas filtradas que se insertaran en la tabla de gl_interface
-	select jf.comb1, jf.comb2, jf.comb3, jf.comb4, jf.comb5, jf.comb6, jf.primo_cnt, jf.inpar_cnt, jf.par_cnt, jf.consecutivo_cnt, jf.terminacion, jf.drawing_case
-	  from jugadas_filtradas_tbl jf; */
-	  
-	  	cursor c_main is
-		--!query basado en numeros preferidos y pronosticos por ciclo
-		with ultimo_resultado_tbl as (
-		select max(gambling_id) max_id
-		  from olap_sys.sl_gamblings
-		)--!info de gigaloterias del ultimo sorteo de digitos que no han tenido cambio de posicion
-		, jugada_tbl as (
-		select *
-		  from olap_sys.s_calculo_stats
-		 where drawing_id = (select max_id from ultimo_resultado_tbl)
-		), gl_preferencia_tbl as (
-		select b_type
-			 , digit
-			 , chng_posicion
-			 , ciclo_aparicion
-		  from jugada_tbl
-		 where preferencia_flag is not null 
-		), resultado_tbl as (
-		select gambling_id, nvl(c1_ca,0) ca1, nvl(c2_ca,0) ca2, nvl(c3_ca,0) ca3, nvl(c4_ca,0) ca4, nvl(c5_ca,0) ca5, nvl(c6_ca,0) ca6, sum_ca
-		  from olap_sys.pm_mr_resultados_v2
-		 where gambling_id > 594  
-		), resultado_percentile_tbl as (
-		select percentile_cont(CF$PERCENTILE_INI) within group (order by ca1) r_perc_ini_ca1
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca1) r_perc_end_ca1
-			 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca2) r_perc_ini_ca2
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca2) r_perc_end_ca2
-			 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca3) r_perc_ini_ca3
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca3) r_perc_end_ca3
-			 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca4) r_perc_ini_ca4
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca4) r_perc_end_ca4     
-			 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca5) r_perc_ini_ca5
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca5) r_perc_end_ca5     
-			 , percentile_cont(CF$PERCENTILE_INI) within group (order by ca6) r_perc_ini_ca6
-			 , percentile_cont(CF$PERCENTILE_END) within group (order by ca6) r_perc_end_ca6     
-		  from resultado_tbl
-		), jugada_ca1_tbl as (
-		select digit c1
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca1 from resultado_percentile_tbl) and (select r_perc_end_ca1 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null
-		  and b_type = 'B1'
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B1'
-		   and ciclo_aparicion between (select r_perc_ini_ca1 from resultado_percentile_tbl) and (select r_perc_end_ca1 from resultado_percentile_tbl)
-		), jugada_ca2_tbl as (
-		select digit c2
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca2 from resultado_percentile_tbl) and (select r_perc_end_ca2 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null
-		  and b_type = 'B2' 
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B2'
-		   and ciclo_aparicion between (select r_perc_ini_ca2 from resultado_percentile_tbl) and (select r_perc_end_ca2 from resultado_percentile_tbl)
-		), jugada_ca3_tbl as (
-		select digit c3
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca3 from resultado_percentile_tbl) and (select r_perc_end_ca3 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null
-		  and b_type = 'B3'
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B3'
-		   and ciclo_aparicion between (select r_perc_ini_ca3 from resultado_percentile_tbl) and (select r_perc_end_ca3 from resultado_percentile_tbl)
-		), jugada_ca4_tbl as (
-		select digit c4
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca4 from resultado_percentile_tbl) and (select r_perc_end_ca4 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null		
-		  and b_type = 'B4'
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B4'
-		   and ciclo_aparicion between (select r_perc_ini_ca4 from resultado_percentile_tbl) and (select r_perc_end_ca4 from resultado_percentile_tbl)
-		), jugada_ca5_tbl as (
-		select digit c5
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca5 from resultado_percentile_tbl) and (select r_perc_end_ca5 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null
-		  and b_type = 'B5'
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B5'
-		   and ciclo_aparicion between (select r_perc_ini_ca5 from resultado_percentile_tbl) and (select r_perc_end_ca5 from resultado_percentile_tbl)
-		), jugada_ca6_tbl as (
-		select digit c6
-			 , chng_posicion
-		 from jugada_tbl
-		where ciclo_aparicion between (select r_perc_ini_ca6 from resultado_percentile_tbl) and (select r_perc_end_ca6 from resultado_percentile_tbl)
-		  and pronos_ciclo is not null
-		  and b_type = 'B6'
-		union
-		select digit
-			 , chng_posicion
-		  from gl_preferencia_tbl
-		 where b_type = 'B6'
-		   and ciclo_aparicion between (select r_perc_ini_ca6 from resultado_percentile_tbl) and (select r_perc_end_ca6 from resultado_percentile_tbl)
-		), jugadas_finales_tbl as (
-		select comb1, comb2, comb3, comb4, comb5, comb6, pn_cnt primo_cnt, none_cnt inpar_cnt, par_cnt, co_cnt consecutivo_cnt, t1_cnt||'~'||t2_cnt terminacion, drawing_case
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B1' and digit = comb1) lt1
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B2' and digit = comb2) lt2
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B3' and digit = comb3) lt3
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B4' and digit = comb4) lt4
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B5' and digit = comb5) lt5
-			 , (select decode(color_ley_tercio,1,'R',2,'G',3,'B') from jugada_tbl where b_type = 'B6' and digit = comb6) lt6
-		  from olap_sys.w_combination_responses_fs
-		 where 1=1
-		   --and status = 'Y'
-		   and pn_cnt = 2
-		   and comb1 in (select c1 from jugada_ca1_tbl)
-		   and comb2 in (select c2 from jugada_ca2_tbl)
-		   and comb3 in (select c3 from jugada_ca3_tbl)
-		   and comb4 in (select c4 from jugada_ca4_tbl)
-		   and comb5 in (select c5 from jugada_ca5_tbl)
-		   and comb6 in (select c6 from jugada_ca6_tbl)
-		) select *
-			from jugadas_finales_tbl  
-		  order by comb1, comb2, comb3, comb4, comb5, comb6;        
-begin
-	delete olap_sys.gl_interface;
-	ln$ultimo_sorteo_id := get_max_drawing_id;
-	
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for j in c_main loop
-		--!proceso para insertar las jugadas previas en la tabla de interface
-		ins_gl_interface (pn_comb1				=> j.comb1
-						, pn_comb2				=> j.comb2
-						, pn_comb3				=> j.comb3
-						, pn_comb4				=> j.comb4
-						, pn_comb5				=> j.comb5
-						, pn_comb6				=> j.comb6
-						, pn_primo_cnt          => j.primo_cnt
-						, pn_inpar_cnt			=> j.inpar_cnt
-						, pn_par_cnt			=> j.par_cnt
-						, pn_consecutivo_cnt    => j.consecutivo_cnt
-						, pv_terminacion        => j.terminacion
-						, pn_drawing_case       => j.drawing_case
-						, pn_sorteo_id			=> ln$ultimo_sorteo_id);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;					
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted.');
-	commit;
-
-	--!procesos de filtrado
-/*	val_pr_pa_in_c1_c6_pr_pa(pv_val_pr_pa_in_c1_c6 => pv_val_pr_pa_in_c1_c6, pv_val_centros_c3_c4  => pv_val_centros_c3_c4);	
-	val_pr_pa_in_c1_c6_pr_in(pv_val_pr_pa_in_c1_c6 => pv_val_pr_pa_in_c1_c6, pv_val_centros_c3_c4  => pv_val_centros_c3_c4);
-	val_pr_pa_in_c1_c6_pa_pa(pv_val_pr_pa_in_c1_c6 => pv_val_pr_pa_in_c1_c6, pv_val_centros_c3_c4  => pv_val_centros_c3_c4);
-	val_pr_pa_in_c1_c6_pa_in(pv_val_pr_pa_in_c1_c6 => pv_val_pr_pa_in_c1_c6, pv_val_centros_c3_c4  => pv_val_centros_c3_c4);
-	val_pr_pa_in_c1_c6_pr_pr(pv_val_pr_pa_in_c1_c6 => pv_val_pr_pa_in_c1_c6, pv_val_centros_c3_c4  => pv_val_centros_c3_c4);
-	commit;*/
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 	
-end jugadas_interface_handler;
-	
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1=PR y c6=PA	
-procedure pr_pa_in_c1_c6_pr_pa is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_pr_pa';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-PA';
-    ln$plan_jugada_id		number := 0;
-    ln$max_drawing_id		number := 0;
-    ln$drawing_case_prev    number := 0;
-    lb$call_function        boolean := true;	
-    --!('PR','PA')
-    --!query que recupera la info en base solo a filtros en C1, C6 y decena
-    --!todas las jugadas    
-    cursor c_main (pf_percentile     float)is
-    with jugadas_tbl as (
-    select comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , nvl(drawing_case,0) drawing_case
-         , pn_cnt
-      from olap_sys.w_combination_responses_fs
-     where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-       and mod(comb6,2) = 0
-	   and pn_cnt = 2
-       and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((7,34),(3,30),(5,30),(7,32),(7,30))	   
-    )--! transformaciones en todas la jugadas
-    , j_tranformaciones_tbl as (
-    select drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) jcnt
-      from jugadas_tbl 
-     group by drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    ) --!todos los resultados
-    , resultados_tbl as (
-    select nvl(dr,0) dr
-         , comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , pn_cnt
-      from olap_sys.pm_mr_resultados_v2
-     where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-       and mod(comb6,2) = 0
-	   and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((7,34),(3,30),(5,30),(7,32),(7,30))
-    )--!transformaciones en todos los resultados
-    , r_tranformaciones_tbl as (
-    select dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) rcnt
-      from resultados_tbl 
-     group by dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    )--!calculando el valor del percentile
-    , j_percentile_tbl as (
-    select percentile_cont(pf_percentile) within group (order by jcnt) j_perc_jcnt
-      from j_tranformaciones_tbl 
-    )--!query de salida
-    , query_output_tbl as (
-    select 'PR' comb1, j.comb2, j.comb3, j.comb4, j.comb5, 'PA' comb6, j.jcnt
-         , nvl((select r.rcnt from r_tranformaciones_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3 and r.comb4=j.comb4 and r.comb5=j.comb5 and r.dr=j.drawing_case and r.pn_cnt=j.pn_cnt),0) rcnt
-         , j.drawing_case
-         , j.pn_cnt
-      from j_tranformaciones_tbl j
-    )--!aplicando filtros
-    select *
-      from query_output_tbl
-     where jcnt > (select j_perc_jcnt from j_percentile_tbl) 
-       and drawing_case > 1
---       and rcnt > 0
-     order by drawing_case, jcnt desc;
-    lrec        c_main%rowtype;
-	
-	cursor c_centros (pf_percentile     float) is	
-	with jugadas_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , pn_cnt
-		  from olap_sys.w_combination_responses_fs
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and mod(comb6,2) = 0
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((7,34),(3,30),(5,30),(7,32),(7,30))	   
-	), resultados_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(dr,0) dr
-			 , pn_cnt
-		  from olap_sys.pm_mr_resultados_v2
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and mod(comb6,2) = 0
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((7,34),(3,30),(5,30),(7,32),(7,30))	  
-	), jugadas_cnt_tbl as (
-	  select --drawing_case
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) jcnt
-		from jugadas_tbl 
-	   group by comb3
-		   , comb4
-	), resultados_cnt_tbl as (
-	  select --dr
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) rcnt
-		from resultados_tbl 
-	   group by comb3
-		   , comb4
-	), j_centros_percentile_tbl as (
-		select  percentile_cont(pf_percentile) within group (order by jcnt) perc_rcnt
-		  from jugadas_cnt_tbl
-	) 
-	select   --j.drawing_case
-			 j.comb3
-		   , j.comb4
-		   , j.consecutivo
-		   , j.jcnt
-		   , nvl((select rcnt from resultados_cnt_tbl r where /*r.dr=j.drawing_case and */r.comb3=j.comb3 and r.comb4=j.comb4 and r.consecutivo=j.consecutivo),0) rcnt
-		from jugadas_cnt_tbl j
-	   where j.jcnt <= (select perc_rcnt from  j_centros_percentile_tbl)   
-		 and j.comb3 between 10 and 29
-		 and j.comb4 between 20 and 29;	
-begin
-    olap_sys.w_common_pkg.g_inscnt := 0;
-	ln$max_drawing_id := olap_sys.w_new_pick_panorama_pkg.get_max_drawing_id;   
-    open c_main (pf_percentile => gf$percentile);
-    fetch c_main into lrec;
-    loop
-        exit when c_main%notfound;
-        ln$drawing_case_prev := lrec.drawing_case;
-        lb$call_function := true;
-        while ln$drawing_case_prev = lrec.drawing_case loop
-            if lb$call_function then
-                ln$plan_jugada_id := olap_sys.w_common_pkg.get_plan_jugada_id(lrec.drawing_case);
-                lb$call_function := false;
-                dbms_output.put_line('drawing_case: '||lrec.drawing_case||', id: '||ln$plan_jugada_id);
-            end if;
-            ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-									, pv_pos1			 => lrec.comb1
-									, pv_pos2			 => lrec.comb2
-									, pv_pos3			 => lrec.comb3
-									, pv_pos4			 => lrec.comb4
-									, pv_pos5			 => lrec.comb5
-									, pv_pos6			 => lrec.comb6
---                                                                    , pv_seq_no          => 
-									, pv_descripcion     => gv$pr_pa_in_c1_c6
-									, pv_comments	     => '1.PR,PA. percentile: '||to_char(gf$percentile)
-									, pv_sort_execution  => ln$max_drawing_id
---                                                                    , pv_flag1           => 
-									, pn_jugadas_cnt     => lrec.jcnt
-									, pn_resultados_cnt  => lrec.rcnt); 
-			olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;						
-            fetch c_main into lrec;
-            exit when c_main%notfound;
-        end loop;
-    end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$pr_pa_in_c1_c6);
-
-	ln$plan_jugada_id := 503;
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for k in c_centros (pf_percentile => gf$percentile) loop
-		dbms_output.put_line(ln$plan_jugada_id||' , '||gv$centros_c3_c4||' , PR , #, '||k.comb3||' , '||k.comb4||' , # , PA');
-		ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-								, pv_pos1			 => 'PR'
-								, pv_pos2			 => '#'
-								, pv_pos3			 => k.comb3
-								, pv_pos4			 => k.comb4
-								, pv_pos5			 => '#'
-								, pv_pos6			 => 'PA'
-								, pv_descripcion     => gv$centros_c3_c4
-								, pv_comments	     => '1.PR,PA. percentile: '||to_char(gf$percentile)
-								, pv_sort_execution  => ln$max_drawing_id
-								, pn_jugadas_cnt     => k.jcnt
-								, pn_resultados_cnt  => k.rcnt); 
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;							
-	end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$centros_c3_c4);	
-
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_pr_pa;
-
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1=PR y c6=IN	
-procedure pr_pa_in_c1_c6_pr_in is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_pr_in';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-IN';
-    ln$plan_jugada_id		number := 0;
-    ln$max_drawing_id		number := 0;
-    ln$drawing_case_prev    number := 0;
-    lb$call_function        boolean := true;
-	
-    --!('PR','IN')
-    --!query que recupera la info en base solo a filtros en C1, C6 y decena
-    --!todas las jugadas    
-    cursor c_main (pf_percentile     float)is
-    with jugadas_tbl as (
-    select comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , nvl(drawing_case,0) drawing_case
-         , pn_cnt
-      from olap_sys.w_combination_responses_fs
-	 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 1 end end end = 1
-	   and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((3,35),(5,35),(7,35),(7,33))
-    )--! transformaciones en todas la jugadas
-    , j_tranformaciones_tbl as (
-    select drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) jcnt
-      from jugadas_tbl 
-     group by drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    ) --!todos los resultados
-    , resultados_tbl as (
-    select nvl(dr,0) dr
-         , comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , pn_cnt
-      from olap_sys.pm_mr_resultados_v2
-	 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 1 end end end = 1
-       and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((3,35),(5,35),(7,35),(7,33))
-    )--!transformaciones en todos los resultados
-    , r_tranformaciones_tbl as (
-    select dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) rcnt
-      from resultados_tbl 
-     group by dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    )--!calculando el valor del percentile
-    , j_percentile_tbl as (
-    select percentile_cont(pf_percentile) within group (order by jcnt) j_perc_jcnt
-      from j_tranformaciones_tbl 
-    )--!query de salida
-    , query_output_tbl as (
-    select 'PR' comb1, j.comb2, j.comb3, j.comb4, j.comb5, 'IN' comb6, j.jcnt
-         , nvl((select r.rcnt from r_tranformaciones_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3 and r.comb4=j.comb4 and r.comb5=j.comb5 and r.dr=j.drawing_case and r.pn_cnt=j.pn_cnt),0) rcnt
-         , j.drawing_case
-         , j.pn_cnt
-      from j_tranformaciones_tbl j
-    )--!aplicando filtros
-    select *
-      from query_output_tbl
-     where jcnt > (select j_perc_jcnt from j_percentile_tbl) 
-       and drawing_case > 1
---       and rcnt > 0
-     order by drawing_case, jcnt desc;
-    lrec        c_main%rowtype;
-
-	cursor c_centros (pf_percentile     float) is	
-	with jugadas_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , pn_cnt
-		  from olap_sys.w_combination_responses_fs
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((3,35),(5,35),(7,35),(7,33))	   
-	), resultados_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(dr,0) dr
-			 , pn_cnt
-		  from olap_sys.pm_mr_resultados_v2
-		 where olap_sys.w_common_pkg.is_prime_number(comb1) = 1
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((3,35),(5,35),(7,35),(7,33))	  
-	), jugadas_cnt_tbl as (
-	  select --drawing_case
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) jcnt
-		from jugadas_tbl 
-	   group by comb3
-		   , comb4
-	), resultados_cnt_tbl as (
-	  select --dr
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) rcnt
-		from resultados_tbl 
-	   group by comb3
-		   , comb4
-	), j_centros_percentile_tbl as (
-		select  percentile_cont(pf_percentile) within group (order by jcnt) perc_rcnt
-		  from jugadas_cnt_tbl
-	) 
-	select   --j.drawing_case
-			 j.comb3
-		   , j.comb4
-		   , j.consecutivo
-		   , j.jcnt
-		   , nvl((select rcnt from resultados_cnt_tbl r where /*r.dr=j.drawing_case and */r.comb3=j.comb3 and r.comb4=j.comb4 and r.consecutivo=j.consecutivo),0) rcnt
-		from jugadas_cnt_tbl j
-	   where j.jcnt <= (select perc_rcnt from  j_centros_percentile_tbl)   
-		 and j.comb3 between 10 and 29
-		 and j.comb4 between 20 and 29;	
-begin
-    olap_sys.w_common_pkg.g_inscnt := 0;
-	ln$max_drawing_id := olap_sys.w_new_pick_panorama_pkg.get_max_drawing_id;   
-    open c_main (pf_percentile => gf$percentile);
-    fetch c_main into lrec;
-    loop
-        exit when c_main%notfound;
-        ln$drawing_case_prev := lrec.drawing_case;
-        lb$call_function := true;
-        while ln$drawing_case_prev = lrec.drawing_case loop
-            if lb$call_function then
-                ln$plan_jugada_id := olap_sys.w_common_pkg.get_plan_jugada_id(lrec.drawing_case);
-                lb$call_function := false;
-                dbms_output.put_line('drawing_case: '||lrec.drawing_case||', id: '||ln$plan_jugada_id);
-            end if;
-            ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-									, pv_pos1			 => lrec.comb1
-									, pv_pos2			 => lrec.comb2
-									, pv_pos3			 => lrec.comb3
-									, pv_pos4			 => lrec.comb4
-									, pv_pos5			 => lrec.comb5
-									, pv_pos6			 => lrec.comb6
---                                                                    , pv_seq_no          => 
-									, pv_descripcion     => gv$pr_pa_in_c1_c6
-									, pv_comments	     => '2.PR,IN. percentile: '||to_char(gf$percentile)
-									, pv_sort_execution  => ln$max_drawing_id
---                                                                    , pv_flag1           => 
-									, pn_jugadas_cnt     => lrec.jcnt
-									, pn_resultados_cnt  => lrec.rcnt); 
-			olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;								
-            fetch c_main into lrec;
-            exit when c_main%notfound;
-        end loop;
-    end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$pr_pa_in_c1_c6);
-	
-	ln$plan_jugada_id := 503;
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for k in c_centros (pf_percentile => gf$percentile) loop
-		dbms_output.put_line(ln$plan_jugada_id||' , '||gv$centros_c3_c4||' , PR , #, '||k.comb3||' , '||k.comb4||' , # , IN');
-		ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-								, pv_pos1			 => 'PR'
-								, pv_pos2			 => '#'
-								, pv_pos3			 => k.comb3
-								, pv_pos4			 => k.comb4
-								, pv_pos5			 => '#'
-								, pv_pos6			 => 'IN'
-								, pv_descripcion     => gv$centros_c3_c4
-								, pv_comments	     => '2.PR,IN. percentile: '||to_char(gf$percentile)
-								, pv_sort_execution  => ln$max_drawing_id
-								, pn_jugadas_cnt     => k.jcnt
-								, pn_resultados_cnt  => k.rcnt); 
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;							
-	end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$centros_c3_c4);
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_pr_in;
-
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1=PA y c6=PA	
-procedure pr_pa_in_c1_c6_pa_pa is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_pa_pa';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-PA';
-    ln$plan_jugada_id		number := 0;
-    ln$max_drawing_id		number := 0;
-    ln$drawing_case_prev    number := 0;
-    lb$call_function        boolean := true;	
-    --!('PA','PA')
-    --!query que recupera la info en base solo a filtros en C1, C6 y decena
-    --!todas las jugadas    
-    cursor c_main (pf_percentile     float)is
-    with jugadas_tbl as (
-    select comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , nvl(drawing_case,0) drawing_case
-         , pn_cnt
-      from olap_sys.w_combination_responses_fs
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-		   case when mod(comb1,2) = 0 then 1 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 1 else 
-		   case when mod(comb6,2) > 0 then 0 end end end = 1 
-	   and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((6,30),(8,32),(8,36),(6,32),(4,30))	   
-    )--! transformaciones en todas la jugadas
-    , j_tranformaciones_tbl as (
-    select drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) jcnt
-      from jugadas_tbl 
-     group by drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    ) --!todos los resultados
-    , resultados_tbl as (
-    select nvl(dr,0) dr
-         , comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , pn_cnt
-      from olap_sys.pm_mr_resultados_v2
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-		   case when mod(comb1,2) = 0 then 1 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 1 else 
-		   case when mod(comb6,2) > 0 then 0 end end end = 1 
-	   and pn_cnt = 2	
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((6,30),(8,32),(8,36),(6,32),(4,30))	   
-    )--!transformaciones en todos los resultados
-    , r_tranformaciones_tbl as (
-    select dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) rcnt
-      from resultados_tbl 
-     group by dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    )--!calculando el valor del percentile
-    , j_percentile_tbl as (
-    select percentile_cont(pf_percentile) within group (order by jcnt) j_perc_jcnt
-      from j_tranformaciones_tbl 
-    )--!query de salida
-    , query_output_tbl as (
-    select 'PA' comb1, j.comb2, j.comb3, j.comb4, j.comb5, 'PA' comb6, j.jcnt
-         , nvl((select r.rcnt from r_tranformaciones_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3 and r.comb4=j.comb4 and r.comb5=j.comb5 and r.dr=j.drawing_case and r.pn_cnt=j.pn_cnt),0) rcnt
-         , j.drawing_case
-         , j.pn_cnt
-      from j_tranformaciones_tbl j
-    )--!aplicando filtros
-    select *
-      from query_output_tbl
-     where jcnt > (select j_perc_jcnt from j_percentile_tbl) 
-       and drawing_case > 1
---       and rcnt > 0
-     order by drawing_case, jcnt desc;
-    lrec        c_main%rowtype;
-	
-	cursor c_centros (pf_percentile     float) is	
-	with jugadas_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , pn_cnt
-		  from olap_sys.w_combination_responses_fs
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 1 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((6,30),(8,32),(8,36),(6,32),(4,30))	   
-	), resultados_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(dr,0) dr
-			 , pn_cnt
-		  from olap_sys.pm_mr_resultados_v2
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 1 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((6,30),(8,32),(8,36),(6,32),(4,30))	  
-	), jugadas_cnt_tbl as (
-	  select --drawing_case
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) jcnt
-		from jugadas_tbl 
-	   group by comb3
-		   , comb4
-	), resultados_cnt_tbl as (
-	  select --dr
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) rcnt
-		from resultados_tbl 
-	   group by comb3
-		   , comb4
-	), j_centros_percentile_tbl as (
-		select  percentile_cont(pf_percentile) within group (order by jcnt) perc_rcnt
-		  from jugadas_cnt_tbl
-	) 
-	select   --j.drawing_case
-			 j.comb3
-		   , j.comb4
-		   , j.consecutivo
-		   , j.jcnt
-		   , nvl((select rcnt from resultados_cnt_tbl r where /*r.dr=j.drawing_case and */r.comb3=j.comb3 and r.comb4=j.comb4 and r.consecutivo=j.consecutivo),0) rcnt
-		from jugadas_cnt_tbl j
-	   where j.jcnt <= (select perc_rcnt from  j_centros_percentile_tbl)   
-		 and j.comb3 between 10 and 29
-		 and j.comb4 between 20 and 29;		
-begin
-    olap_sys.w_common_pkg.g_inscnt := 0;
-	ln$max_drawing_id := olap_sys.w_new_pick_panorama_pkg.get_max_drawing_id;   
-    open c_main (pf_percentile => gf$percentile);
-    fetch c_main into lrec;
-    loop
-        exit when c_main%notfound;
-        ln$drawing_case_prev := lrec.drawing_case;
-        lb$call_function := true;
-        while ln$drawing_case_prev = lrec.drawing_case loop
-            if lb$call_function then
-                ln$plan_jugada_id := olap_sys.w_common_pkg.get_plan_jugada_id(lrec.drawing_case);
-                lb$call_function := false;
-                dbms_output.put_line('drawing_case: '||lrec.drawing_case||', id: '||ln$plan_jugada_id);
-            end if;
-            ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-									, pv_pos1			 => lrec.comb1
-									, pv_pos2			 => lrec.comb2
-									, pv_pos3			 => lrec.comb3
-									, pv_pos4			 => lrec.comb4
-									, pv_pos5			 => lrec.comb5
-									, pv_pos6			 => lrec.comb6
---                                                                    , pv_seq_no          => 
-									, pv_descripcion     => gv$pr_pa_in_c1_c6
-									, pv_comments	     => '3.PA,PA. percentile: '||to_char(gf$percentile)
-									, pv_sort_execution  => ln$max_drawing_id
---                                                                    , pv_flag1           => 
-									, pn_jugadas_cnt     => lrec.jcnt
-									, pn_resultados_cnt  => lrec.rcnt); 
-			olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;								
-            fetch c_main into lrec;
-            exit when c_main%notfound;
-        end loop;
-    end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$pr_pa_in_c1_c6);
-	
-	ln$plan_jugada_id := 503;
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for k in c_centros (pf_percentile => gf$percentile) loop
-		dbms_output.put_line(ln$plan_jugada_id||' , '||gv$centros_c3_c4||' , PA , #, '||k.comb3||' , '||k.comb4||' , # , PA');
-		ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-								, pv_pos1			 => 'PA'
-								, pv_pos2			 => '#'
-								, pv_pos3			 => k.comb3
-								, pv_pos4			 => k.comb4
-								, pv_pos5			 => '#'
-								, pv_pos6			 => 'PA'
-								, pv_descripcion     => gv$centros_c3_c4
-								, pv_comments	     => '3.PA,PA. percentile: '||to_char(gf$percentile)
-								, pv_sort_execution  => ln$max_drawing_id
-								, pn_jugadas_cnt     => k.jcnt
-								, pn_resultados_cnt  => k.rcnt); 
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;							
-	end loop;
-	commit;	
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$centros_c3_c4);	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_pa_pa;
-
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1=PA y c6=IN	
-procedure pr_pa_in_c1_c6_pa_in is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_pa_in';
-	CV$TASK_NAME		    constant varchar2(30) := 'PA-IN';
-    ln$plan_jugada_id		number := 0;
-    ln$max_drawing_id		number := 0;
-    ln$drawing_case_prev    number := 0;
-    lb$call_function        boolean := true;	
-    --!('PA','IN')
-    --!query que recupera la info en base solo a filtros en C1, C6 y decena
-    --!todas las jugadas    
-    cursor c_main (pf_percentile     float)is
-    with jugadas_tbl as (
-    select comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , nvl(drawing_case,0) drawing_case
-         , pn_cnt
-      from olap_sys.w_combination_responses_fs
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-		   case when mod(comb1,2) = 0 then 1 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 1 end end end = 1 
-	   and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((4,33),(6,35),(8,35))	   
-    )--! transformaciones en todas la jugadas
-    , j_tranformaciones_tbl as (
-    select drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) jcnt
-      from jugadas_tbl 
-     group by drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    ) --!todos los resultados
-    , resultados_tbl as (
-    select nvl(dr,0) dr
-         , comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , pn_cnt
-      from olap_sys.pm_mr_resultados_v2
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-		   case when mod(comb1,2) = 0 then 1 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 1 end end end = 1 
-	   and pn_cnt = 2	
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((4,33),(6,35),(8,35))
-    )--!transformaciones en todos los resultados
-    , r_tranformaciones_tbl as (
-    select dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) rcnt
-      from resultados_tbl 
-     group by dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    )--!calculando el valor del percentile
-    , j_percentile_tbl as (
-    select percentile_cont(pf_percentile) within group (order by jcnt) j_perc_jcnt
-      from j_tranformaciones_tbl 
-    )--!query de salida
-    , query_output_tbl as (
-    select 'PA' comb1, j.comb2, j.comb3, j.comb4, j.comb5, 'IN' comb6, j.jcnt
-         , nvl((select r.rcnt from r_tranformaciones_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3 and r.comb4=j.comb4 and r.comb5=j.comb5 and r.dr=j.drawing_case and r.pn_cnt=j.pn_cnt),0) rcnt
-         , j.drawing_case
-         , j.pn_cnt
-      from j_tranformaciones_tbl j
-    )--!aplicando filtros
-    select *
-      from query_output_tbl
-     where jcnt > (select j_perc_jcnt from j_percentile_tbl) 
-       and drawing_case > 1
---       and rcnt > 0
-     order by drawing_case, jcnt desc;
-    lrec        c_main%rowtype;
-	
-	cursor c_centros (pf_percentile     float) is	
-	with jugadas_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , pn_cnt
-		  from olap_sys.w_combination_responses_fs
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((4,33),(6,35),(8,35))	   
-	), resultados_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(dr,0) dr
-			 , pn_cnt
-		  from olap_sys.pm_mr_resultados_v2
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-			   case when mod(comb1,2) = 0 then 1 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 1 end end end = 1
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((4,33),(6,35),(8,35))  
-	), jugadas_cnt_tbl as (
-	  select --drawing_case
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) jcnt
-		from jugadas_tbl 
-	   group by comb3
-		   , comb4
-	), resultados_cnt_tbl as (
-	  select --dr
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) rcnt
-		from resultados_tbl 
-	   group by comb3
-		   , comb4
-	), j_centros_percentile_tbl as (
-		select  percentile_cont(pf_percentile) within group (order by jcnt) perc_rcnt
-		  from jugadas_cnt_tbl
-	) 
-	select   --j.drawing_case
-			 j.comb3
-		   , j.comb4
-		   , j.consecutivo
-		   , j.jcnt
-		   , nvl((select rcnt from resultados_cnt_tbl r where /*r.dr=j.drawing_case and */r.comb3=j.comb3 and r.comb4=j.comb4 and r.consecutivo=j.consecutivo),0) rcnt
-		from jugadas_cnt_tbl j
-	   where j.jcnt <= (select perc_rcnt from  j_centros_percentile_tbl)   
-		 and j.comb3 between 10 and 29
-		 and j.comb4 between 20 and 29;		
-begin
-    olap_sys.w_common_pkg.g_inscnt := 0;
-	ln$max_drawing_id := olap_sys.w_new_pick_panorama_pkg.get_max_drawing_id;   
-    open c_main (pf_percentile => gf$percentile);
-    fetch c_main into lrec;
-    loop
-        exit when c_main%notfound;
-        ln$drawing_case_prev := lrec.drawing_case;
-        lb$call_function := true;
-        while ln$drawing_case_prev = lrec.drawing_case loop
-            if lb$call_function then
-                ln$plan_jugada_id := olap_sys.w_common_pkg.get_plan_jugada_id(lrec.drawing_case);
-                lb$call_function := false;
-                dbms_output.put_line('drawing_case: '||lrec.drawing_case||', id: '||ln$plan_jugada_id);
-            end if;
-            ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-									, pv_pos1			 => lrec.comb1
-									, pv_pos2			 => lrec.comb2
-									, pv_pos3			 => lrec.comb3
-									, pv_pos4			 => lrec.comb4
-									, pv_pos5			 => lrec.comb5
-									, pv_pos6			 => lrec.comb6
---                                                                    , pv_seq_no          => 
-									, pv_descripcion     => gv$pr_pa_in_c1_c6
-									, pv_comments	     => '4.PA,IN. percentile: '||to_char(gf$percentile)
-									, pv_sort_execution  => ln$max_drawing_id
---                                                                    , pv_flag1           => 
-									, pn_jugadas_cnt     => lrec.jcnt
-									, pn_resultados_cnt  => lrec.rcnt); 
-			olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;								
-            fetch c_main into lrec;
-            exit when c_main%notfound;
-        end loop;
-    end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$pr_pa_in_c1_c6);
-	
-	ln$plan_jugada_id := 503;
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for k in c_centros (pf_percentile => gf$percentile) loop
-		dbms_output.put_line(ln$plan_jugada_id||' , '||gv$centros_c3_c4||' , PA , #, '||k.comb3||' , '||k.comb4||' , # , IN');
-		ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-								, pv_pos1			 => 'PA'
-								, pv_pos2			 => '#'
-								, pv_pos3			 => k.comb3
-								, pv_pos4			 => k.comb4
-								, pv_pos5			 => '#'
-								, pv_pos6			 => 'IN'
-								, pv_descripcion     => gv$centros_c3_c4
-								, pv_comments	     => '4.PA,IN. percentile: '||to_char(gf$percentile)
-								, pv_sort_execution  => ln$max_drawing_id
-								, pn_jugadas_cnt     => k.jcnt
-								, pn_resultados_cnt  => k.rcnt); 
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;							
-	end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$centros_c3_c4);		
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_pa_in;
-
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1=PR y c6=PR	
-procedure pr_pa_in_c1_c6_pr_pr is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_pr_pr';
-	CV$TASK_NAME		    constant varchar2(30) := 'PR-PR';
-    ln$plan_jugada_id		number := 0;
-    ln$max_drawing_id		number := 0;
-    ln$drawing_case_prev    number := 0;
-    lb$call_function        boolean := true;	
-	
-    --!('PR','PR')
-    --!query que recupera la info en base solo a filtros en C1, C6 y decena
-    --!todas las jugadas    
-    cursor c_main (pf_percentile     float)is
-    with jugadas_tbl as (
-    select comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , nvl(drawing_case,0) drawing_case
-         , pn_cnt
-      from olap_sys.w_combination_responses_fs
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-		   case when mod(comb1,2) = 0 then 0 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 0 end end end = 1 
-	   and pn_cnt = 2
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((1,31),(3,31))	   
-    )--! transformaciones en todas la jugadas
-    , j_tranformaciones_tbl as (
-    select drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) jcnt
-      from jugadas_tbl 
-     group by drawing_case
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    ) --!todos los resultados
-    , resultados_tbl as (
-    select nvl(dr,0) dr
-         , comb1
-         , comb2
-         , comb3
-         , comb4
-         , comb5
-         , comb6
-         , pn_cnt
-      from olap_sys.pm_mr_resultados_v2
-	 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-		   case when mod(comb1,2) = 0 then 0 else 
-		   case when mod(comb1,2) > 0 then 0 end end end = 1 
-	   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-		   case when mod(comb6,2) = 0 then 0 else 
-		   case when mod(comb6,2) > 0 then 0 end end end = 1 
-	   and pn_cnt = 2	
-	   and comb1 <= 9
-	   and comb6 >= 30
-	   --!filtrado las combinaciones menos favorables
-       and (comb1,comb6) not in ((1,31),(3,31))	   
-    )--!transformaciones en todos los resultados
-    , r_tranformaciones_tbl as (
-    select dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end comb2
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end comb3
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end comb4
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end comb5
-         , count(1) rcnt
-      from resultados_tbl 
-     group by dr
-         , pn_cnt
-         , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 'PR' else 
-           case when mod(comb2,2) = 0 then 'PA' else 
-           case when mod(comb2,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 'PR' else 
-           case when mod(comb3,2) = 0 then 'PA' else 
-           case when mod(comb3,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 'PR' else 
-           case when mod(comb4,2) = 0 then 'PA' else 
-           case when mod(comb4,2) > 0 then 'IN' end end end 
-         , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 'PR' else 
-           case when mod(comb5,2) = 0 then 'PA' else 
-           case when mod(comb5,2) > 0 then 'IN' end end end 
-    )--!calculando el valor del percentile
-    , j_percentile_tbl as (
-    select percentile_cont(pf_percentile) within group (order by jcnt) j_perc_jcnt
-      from j_tranformaciones_tbl 
-    )--!query de salida
-    , query_output_tbl as (
-    select 'PR' comb1, j.comb2, j.comb3, j.comb4, j.comb5, 'PR' comb6, j.jcnt
-         , nvl((select r.rcnt from r_tranformaciones_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3 and r.comb4=j.comb4 and r.comb5=j.comb5 and r.dr=j.drawing_case and r.pn_cnt=j.pn_cnt),0) rcnt
-         , j.drawing_case
-         , j.pn_cnt
-      from j_tranformaciones_tbl j
-    )--!aplicando filtros
-    select *
-      from query_output_tbl
-     where jcnt > (select j_perc_jcnt from j_percentile_tbl) 
-       and drawing_case > 1
---       and rcnt > 0
-     order by drawing_case, jcnt desc;
-    lrec        c_main%rowtype;
-	
-	cursor c_centros (pf_percentile     float) is	
-	with jugadas_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(drawing_case,0) drawing_case
-			 , pn_cnt
-		  from olap_sys.w_combination_responses_fs
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-			   case when mod(comb1,2) = 0 then 0 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((1,31),(3,31))   
-	), resultados_tbl as (
-		select comb1
-			 , comb2
-			 , comb3
-			 , comb4
-			 , comb5
-			 , comb6
-			 , nvl(dr,0) dr
-			 , pn_cnt
-		  from olap_sys.pm_mr_resultados_v2
-		 where case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 
-			   case when mod(comb1,2) = 0 then 0 else 
-			   case when mod(comb1,2) > 0 then 0 end end end = 1 
-		   and case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 
-			   case when mod(comb6,2) = 0 then 0 else 
-			   case when mod(comb6,2) > 0 then 0 end end end = 1 
-		   and pn_cnt = 2
-		   and comb1 <= 9
-		   and comb6 >= 30
-		   --!filtrado las combinaciones menos favorables
-		   and (comb1,comb6) not in ((1,31),(3,31))
-	), jugadas_cnt_tbl as (
-	  select --drawing_case
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) jcnt
-		from jugadas_tbl 
-	   group by comb3
-		   , comb4
-	), resultados_cnt_tbl as (
-	  select --dr
-			 comb3
-		   , comb4
-		   , case when comb4 - comb3 = 1 then 'R' else 'N' end consecutivo
-		   , count(1) rcnt
-		from resultados_tbl 
-	   group by comb3
-		   , comb4
-	), j_centros_percentile_tbl as (
-		select  percentile_cont(pf_percentile) within group (order by jcnt) perc_rcnt
-		  from jugadas_cnt_tbl
-	) 
-	select   --j.drawing_case
-			 j.comb3
-		   , j.comb4
-		   , j.consecutivo
-		   , j.jcnt
-		   , nvl((select rcnt from resultados_cnt_tbl r where /*r.dr=j.drawing_case and */r.comb3=j.comb3 and r.comb4=j.comb4 and r.consecutivo=j.consecutivo),0) rcnt
-		from jugadas_cnt_tbl j
-	   where j.jcnt <= (select perc_rcnt from  j_centros_percentile_tbl)   
-		 and j.comb3 between 10 and 29
-		 and j.comb4 between 20 and 29;		
-begin
-    olap_sys.w_common_pkg.g_inscnt := 0;
-	ln$max_drawing_id := olap_sys.w_new_pick_panorama_pkg.get_max_drawing_id;   
-    open c_main (pf_percentile => gf$percentile);
-    fetch c_main into lrec;
-    loop
-        exit when c_main%notfound;
-        ln$drawing_case_prev := lrec.drawing_case;
-        lb$call_function := true;
-        while ln$drawing_case_prev = lrec.drawing_case loop
-            if lb$call_function then
-                ln$plan_jugada_id := olap_sys.w_common_pkg.get_plan_jugada_id(lrec.drawing_case);
-                lb$call_function := false;
-                dbms_output.put_line('drawing_case: '||lrec.drawing_case||', id: '||ln$plan_jugada_id);
-            end if;
-            ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-									, pv_pos1			 => lrec.comb1
-									, pv_pos2			 => lrec.comb2
-									, pv_pos3			 => lrec.comb3
-									, pv_pos4			 => lrec.comb4
-									, pv_pos5			 => lrec.comb5
-									, pv_pos6			 => lrec.comb6
---                                                                    , pv_seq_no          => 
-									, pv_descripcion     => gv$pr_pa_in_c1_c6
-									, pv_comments	     => '5.PR,PR. percentile: '||to_char(gf$percentile)
-									, pv_sort_execution  => ln$max_drawing_id
---                                                                    , pv_flag1           => 
-									, pn_jugadas_cnt     => lrec.jcnt
-									, pn_resultados_cnt  => lrec.rcnt); 
-			olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;								
-            fetch c_main into lrec;
-            exit when c_main%notfound;
-        end loop;
-    end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$pr_pa_in_c1_c6);
-
-	ln$plan_jugada_id := 503;
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for k in c_centros (pf_percentile => gf$percentile) loop
-		dbms_output.put_line(ln$plan_jugada_id||' , '||gv$centros_c3_c4||' , PR , #, '||k.comb3||' , '||k.comb4||' , # , PR');
-		ins_plan_jugada_details (pn_plan_jugada_id	 => ln$plan_jugada_id
-								, pv_pos1			 => 'PR'
-								, pv_pos2			 => '#'
-								, pv_pos3			 => k.comb3
-								, pv_pos4			 => k.comb4
-								, pv_pos5			 => '#'
-								, pv_pos6			 => 'PR'
-								, pv_descripcion     => gv$centros_c3_c4
-								, pv_comments	     => '5.PR,PR. percentile: '||to_char(gf$percentile)
-								, pv_sort_execution  => ln$max_drawing_id
-								, pn_jugadas_cnt     => k.jcnt
-								, pn_resultados_cnt  => k.rcnt); 
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;							
-	end loop;
-	commit;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' '||CV$TASK_NAME||' rows inserted. '||gv$centros_c3_c4);	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_pr_pr;
-
---!insertar registros en la tabla plan_jugadas_details las combinaciones de primos, inpares y pares
---!tomando como base las columnas c1 y c6									  
-procedure pr_pa_in_c1_c6_handler is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'pr_pa_in_c1_c6_handler';
-begin
-	delete olap_sys.plan_jugada_details where description = gv$pr_pa_in_c1_c6;
-	delete olap_sys.plan_jugada_details where description = gv$centros_c3_c4;
-	pr_pa_in_c1_c6_pr_pa;
-	pr_pa_in_c1_c6_pr_in;
-	pr_pa_in_c1_c6_pa_pa;
-	pr_pa_in_c1_c6_pa_in;
-	pr_pa_in_c1_c6_pr_pr;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end pr_pa_in_c1_c6_handler;
-
---!insertar datos en la tabla pm_mapa_numeros_primos
-procedure ins_mapa_numeros_primos (pn_comb1				number
-								 , pn_comb2				number
-								 , pn_comb3				number
-								 , pn_comb4				number
-								 , pn_comb5				number
-								 , pn_comb6				number
-								 , pn_jcnt				number
-								 , pn_rcnt				number
-								 , pn_last_id			number	
-								 , pn_max_id			number
-								 , pn_diferencia		number
-								 , pf_percentile_rcnt	float
-								 , pf_perc_dif_ini		float
-								 , pf_perc_dif_end		float) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_mapa_numeros_primos';
-begin
-	insert into olap_sys.pm_mapa_numeros_primos(mapa_id, comb1, comb2, comb3, comb4, comb5, comb6
-											  , jcnt, rcnt, last_id, max_id, diferencia, percentile_rcnt, perc_dif_ini, perc_dif_end, status)
-	values((select nvl(max(mapa_id),0)+1 from olap_sys.pm_mapa_numeros_primos)
-		 , pn_comb1
-		 , pn_comb2
-		 , pn_comb3
-		 , pn_comb4
-		 , pn_comb5
-		 , pn_comb6
-		 , pn_jcnt
-		 , pn_rcnt
-		 , pn_last_id
-		 , pn_max_id
-		 , pn_diferencia
-		 , pf_percentile_rcnt
-		 , pf_perc_dif_ini
-		 , pf_perc_dif_end
-		 , decode(pn_rcnt,-1,'0','N'));
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_mapa_numeros_primos;
-
-
---!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-procedure upd_mapa_numeros_primos (pn_comb1				number
-								 , pn_comb2				number
-								 , pn_comb3				number
-								 , pn_comb4				number
-								 , pn_comb5				number
-								 , pn_comb6				number
-								 , pv_status			varchar2) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_mapa_numeros_primos';
-begin
-	update olap_sys.pm_mapa_numeros_primos
-	   set status = pv_status
-	 where comb1 = pn_comb1
-       and comb2 = pn_comb2
-       and comb3 = pn_comb3
-       and comb4 = pn_comb4
-       and comb5 = pn_comb5
-       and comb6 = pn_comb6;  
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end upd_mapa_numeros_primos;
-								 
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c1_c2 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c1_c2';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb2 
-	), resultados_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2   
-	 group by comb1
-		 , comb2 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb2
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, comb2, 0 comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb1, comb2;	
-	
-	
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb2 
-	), resultados_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2   
-	 group by comb1
-		 , comb2 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb2
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, comb2, 0 comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb2 
-	), resultados_tbl as (
-	select comb1
-		 , comb2
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb2 in (2,3,5,7,11,13,17,19)
-	   and pn_cnt = 2   
-	 group by comb1
-		 , comb2 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb2
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb2=j.comb2),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, comb2, 0 comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c1_c2;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c1_c3 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c1_c3';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), resultados_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb1
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb1, comb3;	
-	
-	
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), resultados_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb1
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), resultados_tbl as (
-	select comb1
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb1
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c1_c3;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c1_c5 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c1_c5';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5
-	), resultados_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb1, comb5;	
-	
-	
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5
-	), resultados_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5
-	), resultados_tbl as (
-	select comb1
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb1 in (1,2,3,5,7)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb1
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb1
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb1=j.comb1 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select comb1, 0 comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c1_c5;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c2_c3 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c2_c3';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), resultados_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb2
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb2, comb3;	
-	
-	
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), resultados_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb2
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), resultados_tbl as (
-	select comb2
-		 , comb3
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb3 in (11,13,17,19,23,29)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb3 
-	), intermedio_tbl as (  
-	select j.comb2
-		 , j.comb3
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb3=j.comb3),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, comb3, 0 comb4, 0 comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c2_c3;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c2_c5 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c2_c5';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), resultados_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb2
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb2, comb5;	
-	
-	
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), resultados_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb2
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), resultados_tbl as (
-	select comb2
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb2 in (2,3,5,7,11,13,17,19)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb2
-		 , comb5 
-	), intermedio_tbl as ( 
-	select j.comb2
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb2=j.comb2 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, comb2, 0 comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c2_c5;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_primos_c3_c5 is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_primos_c3_c5';
-	cursor c_main (pf_mapa_percentile_rcnt		float
-				 , pf_mapa_perc_dif_ini			float
-				 , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), resultados_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), intermedio_tbl as (  
-	select j.comb3
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, 0 comb2, comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-	    order by diferencia, comb3, comb5;	
-	
-	--!recupera las parejas de numeros primos que esten dentro del percentile
-	cursor c_primario (pf_mapa_percentile_rcnt		float
-				     , pf_mapa_perc_dif_ini			float
-				     , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), resultados_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), intermedio_tbl as (  
-	select j.comb3
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, 0 comb2, comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt <= (select perc_rcnt from percentile_rcnt_tbl); 
-
-	--!recupera las parejas de numeros primos que esten fuera del percentile
-	cursor c_secundario (pf_mapa_percentile_rcnt		float
-				       , pf_mapa_perc_dif_ini			float
-				       , pf_mapa_perc_dif_end			float) is
-	with last_id_tbl as (
-	select max(gambling_id) last_id
-	  from olap_sys.pm_mr_resultados_v2
-	)  
-	, jugadas_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) jcnt
-	  from olap_sys.w_combination_responses_fs
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), resultados_tbl as (
-	select comb3
-		 , comb5
-		 , count(1) rcnt
-		 , max(gambling_id) max_id
-	  from olap_sys.pm_mr_resultados_v2
-	 where comb3 in (11,13,17,19,23,29)
-	   and comb5 in (23,29,31,37)
-	   and pn_cnt = 2
-	 group by comb3
-		 , comb5 
-	), intermedio_tbl as (  
-	select j.comb3
-		 , j.comb5
-		 , j.jcnt
-		 , nvl((select rcnt from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) rcnt
-		 , nvl((select last_id from last_id_tbl),-1) last_id
-		 , nvl((select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) max_id
-		 , nvl((select last_id from last_id_tbl) - (select max_id from resultados_tbl r where r.comb3=j.comb3 and r.comb5=j.comb5),-1) diferencia
-	   from jugadas_tbl j     
-	 ), percentile_rcnt_tbl as (
-	  select percentile_cont(pf_mapa_percentile_rcnt) within group (order by rcnt) perc_rcnt --0.4
-	   from intermedio_tbl
-	  where rcnt > 0 
-	 ), percentile_dif_tbl as (
-	  select percentile_cont(pf_mapa_perc_dif_ini) within group (order by diferencia) perc_dif_ini --0.15
-		   , percentile_cont(pf_mapa_perc_dif_end) within group (order by diferencia) perc_dif_end --0.7
-	   from intermedio_tbl
-	  where diferencia > 0 
-	 ) select 0 comb1, 0 comb2, comb3, 0 comb4, comb5, 0 comb6, jcnt, rcnt, last_id, max_id, diferencia
-		 from intermedio_tbl
-		where 1=1
-		  and diferencia between (select perc_dif_ini from percentile_dif_tbl) and (select perc_dif_end from percentile_dif_tbl) 
-		  and rcnt > (select perc_rcnt from percentile_rcnt_tbl);					 
-begin
-	--!insert
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_main (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-				   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				   , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		ins_mapa_numeros_primos (pn_comb1			=> i.comb1
-							   , pn_comb2			=> i.comb2
-							   , pn_comb3			=> i.comb3
-							   , pn_comb4			=> i.comb4
-							   , pn_comb5			=> i.comb5
-							   , pn_comb6			=> i.comb6
-							   , pn_jcnt			=> i.jcnt
-							   , pn_rcnt			=> i.rcnt
-							   , pn_last_id			=> i.last_id
-							   , pn_max_id			=> i.max_id
-							   , pn_diferencia		=> i.diferencia
-							   , pf_percentile_rcnt	=> gf$mapa_percentile_rcnt
-							   , pf_perc_dif_ini	=> gf$mapa_perc_dif_ini
-							   , pf_perc_dif_end	=> gf$mapa_perc_dif_end);
-		olap_sys.w_common_pkg.g_inscnt := olap_sys.w_common_pkg.g_inscnt + 1;
-	end loop;
-	dbms_output.put_line(olap_sys.w_common_pkg.g_inscnt||' rows inserted for '||LV$PROCEDURE_NAME);
-	
-	--!update status 1
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_primario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					   , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				       , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '1');
-	end loop;
-
-	--!update status 2
-	olap_sys.w_common_pkg.g_inscnt := 0;
-	for i in c_secundario (pf_mapa_percentile_rcnt => gf$mapa_percentile_rcnt
-					     , pf_mapa_perc_dif_ini    => gf$mapa_perc_dif_ini
-				         , pf_mapa_perc_dif_end    => gf$mapa_perc_dif_end) loop
-		--!actualizar el status de cada registro en la tabla pm_mapa_numeros_primos
-		upd_mapa_numeros_primos (pn_comb1  => i.comb1
-							   , pn_comb2  => i.comb2
-							   , pn_comb3  => i.comb3
-							   , pn_comb4  => i.comb4
-							   , pn_comb5  => i.comb5
-							   , pn_comb6  => i.comb6
-							   , pv_status => '2');
-	end loop;	
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_primos_c3_c5;
-
---!insertar metadatos del mapa de numeros basados en 2 primos
-procedure mapa_numeros_primos_handler is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'mapa_numeros_primos_handler';
-begin
-	delete olap_sys.pm_mapa_numeros_primos;
-	mapa_primos_c1_c2;
-	mapa_primos_c1_c3;
-	mapa_primos_c1_c5;
-	mapa_primos_c2_c3;
-	mapa_primos_c2_c5;
-	mapa_primos_c3_c5;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end mapa_numeros_primos_handler;
-
-
---!insertar la lista de numeros que se manejan en el sorteo 								  
-procedure ins_listado_numeros is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_listado_numeros';	
-begin
-	delete olap_sys.w_lookups_fs;
-	for k in 1..39 loop
-		insert into olap_sys.w_lookups_fs(seq_id
-								, gambling_type
-								, context
-								, code
-								, attribute1
-								, attribute2
-								, status
-								, creation_date
-								, created_by)
-		values (olap_sys.w_lookups_fs_seq.nextval
-		      , 'mrtr'
-			  , 'LISTADO_NUMEROS'
-              , 'LISTADO_NUMEROS'
-			  , k
-			  , 0
-			  , 'A'
-			  , sysdate
-			  , user);
-	end loop;
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_listado_numeros;
-
---!insertar la lista de numeros que se manejan en el sorteo 								  
-procedure upd_listado_numeros (pn_comb1     number
-                             , pn_historico number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'upd_listado_numeros';	
-	cursor c_main (pn_comb1   number) is
-	with resultado_tbl as (
-	select comb1, comb2, comb3, comb4, comb5, comb6
-	  from olap_sys.sl_gamblings
-     where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - pn_historico
-	   and comb1 = pn_comb1
-	), union_tbl as (
-	select comb1 comb
-	  from resultado_tbl
-	union all
-	select comb2
-	  from resultado_tbl 
-	union all
-	select comb3
-	  from resultado_tbl 
-	union all
-	select comb4
-	  from resultado_tbl 
-	union all
-	select comb5
-	  from resultado_tbl 
-	union all
-	select comb6
-	  from resultado_tbl 
-	) select comb
-	       , count(1) rcnt
-	    from union_tbl
-	   group by comb;
-begin
-	for t in c_main (pn_comb1 => pn_comb1) loop
-		update olap_sys.w_lookups_fs
-		   set attribute2 = t.rcnt
-		 where context = 'LISTADO_NUMEROS'
-           and attribute1 = t.comb;		 
-	end loop;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end upd_listado_numeros;
-
-
-procedure show_listado_numeros (pn_historico number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'show_listado_numeros';
-	cursor c_main is 
-	select attribute1
-		 , attribute2
-	  from olap_sys.w_lookups_fs
-	 where context = 'LISTADO_NUMEROS'
-	 order by attribute2 desc
-		 , attribute1;	
-begin
-	for p in c_main loop
-		dbms_output.put_line(p.attribute1||'|'||p.attribute2||'|'||pn_historico);
-	end loop;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end show_listado_numeros;
-
-
---!mostrar el conteo de las repeticiones de numeros en funcion del digito base 								  
-procedure listado_numeros_handler (pn_comb1   number
-                                 , pn_historico number default 100) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'listado_numeros_handler';
-begin
-	ins_listado_numeros;
-	upd_listado_numeros (pn_comb1     => pn_comb1
-	                   , pn_historico => pn_historico);
-	show_listado_numeros (pn_historico => pn_historico);		
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end listado_numeros_handler;
-
---!cargar el historico de resultados
-procedure cargar_historico_resultados (pn_historico                             number
-                                     , xtbl$resultados		IN OUT NOCOPY		gt$resultado_tbl
-									 , xtbl$resultados_next IN OUT NOCOPY		gt$resultado_next_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'cargar_historico_resultados';
-begin
-	select gambling_id id, comb1, comb2, comb3, comb4, comb5, comb6, null flag
-	  bulk collect into xtbl$resultados 
-	  from olap_sys.pm_mr_resultados_v2
-	 where gambling_id > pn_historico 
-	 order by gambling_id;
-	 
-	for n in 1..39 loop
-		xtbl$resultados_next(n).pos := n;
-		xtbl$resultados_next(n).match_cnt := 0;
-	end loop;	
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end cargar_historico_resultados;
-
---!buscar el patron del numero siguiente en base a un numero datos
-procedure buscar_siguiente_patron (pn_comb          						number
-								 , pn_posicion 								number
-								 , pn_max_id       							number
-						         , xtbl$resultados		IN OUT NOCOPY		gt$resultado_tbl
-								 , xtbl$resultados_next IN OUT NOCOPY		gt$resultado_next_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'buscar_siguiente_patron';
-	ln$curr_index			number := 1;
-	ln$next_index			number := 0;
-	ln$history_duration		number := 0;
-begin
-	for i in xtbl$resultados.first..xtbl$resultados.last loop
-		if ln$next_index <= xtbl$resultados.count then
-			if pn_posicion = 1 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos1||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos1 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos1 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;
-			
-			if pn_posicion = 2 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos2||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos2 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos2 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;
-
-			if pn_posicion = 3 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos3||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos3 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos3 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;
-
-			if pn_posicion = 4 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos4||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos4 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos4 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;
-
-			if pn_posicion = 5 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos5||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos5 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos5 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;
-
-			if pn_posicion = 6 then
-				--dbms_output.put_line('pos: '|| xtbl$resultados(ln$curr_index).pos6||' pn_comb: '||pn_comb);
-				if xtbl$resultados(ln$curr_index).pos6 = pn_comb then
-				--dbms_output.put_line('paso1');
-					xtbl$resultados(ln$curr_index).flag := '1';
-					ln$next_index := ln$curr_index + 1;
-					xtbl$resultados(ln$next_index).flag := '2';
-					for k in xtbl$resultados_next.first..xtbl$resultados_next.last loop
-						if xtbl$resultados_next(k).pos = xtbl$resultados(ln$next_index).pos6 then
-							xtbl$resultados_next(k).history_ids := xtbl$resultados_next(k).history_ids ||'|'||xtbl$resultados(ln$next_index).id;
-							ln$history_duration := pn_max_id-xtbl$resultados(ln$next_index).id;
-							xtbl$resultados_next(k).history_duration := xtbl$resultados_next(k).history_duration ||'|'||ln$history_duration;
-							xtbl$resultados_next(k).match_cnt := xtbl$resultados_next(k).match_cnt + 1;
-						end if;
-					end loop;
-				end if;
-			end if;			
-		end if;
-		ln$curr_index := ln$curr_index + 1;
-		ln$history_duration := 0;
-	end loop;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end buscar_siguiente_patron;
-
-
---!insertar en una tabla los resultados para ordenarlos
-procedure ordenar_resultados (pn_max_id  			number
-							, ptbl$resultados_next  gt$resultado_next_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ordenar_resultados';
-	ln$comb_match			NUMBER := 0;
-	ln$next_match			NUMBER := 0;
-	ln$history_duration     NUMBER := 0;
-	lv$reverse_substr       VARCHAR2(100);
-	lv$ultimos_100			VARCHAR2(100);
-begin
-	delete olap_sys.w_lookups_fs where CONTEXT = 'ORDENAR_RESULTADOS';
-	
-	--!imprimir detalle de los match
-	for b in ptbl$resultados_next.first..ptbl$resultados_next.last loop
-		if ptbl$resultados_next(b).history_ids is not null then
-
-			--!calculamos la duracion del ultimo sorteo con respecto al sorteo actual		
-			select pn_max_id - to_number(substr(ptbl$resultados_next(b).history_ids,length(ptbl$resultados_next(b).history_ids) - instr(reverse(ptbl$resultados_next(b).history_ids), '|') +2))
-			  into ln$history_duration
-			  from dual;
-			 
-			--!leemos os ultimos 100 caracteres del string
-			select substr(ptbl$resultados_next(b).history_ids, case when LENGTH(ptbl$resultados_next(b).history_ids) - 99 < 0 then 1 else LENGTH(ptbl$resultados_next(b).history_ids) - 99 end,100) 
-			  into lv$ultimos_100
-              from dual;			  
-			
-			insert into olap_sys.w_lookups_fs (seq_id
-											 , gambling_type
-											 , context
-											 , code
-											 , description
-											 , attribute1
-											 , attribute2
-											 , attribute3
-											 , status
-											 , creation_date
-											 , created_by)	
-            values ((select max(seq_id)+1 from olap_sys.w_lookups_fs)
-				  , 'mrtr'
-				  , 'ORDENAR_RESULTADOS'
-				  , 'NEXT_HISTORY'
-				  , lpad(ptbl$resultados_next(b).pos,2,'00')
-				  , ptbl$resultados_next(b).match_cnt
-				  , ln$history_duration
-				  , lv$ultimos_100
-				  , 'A'
-				  , SYSDATE
-				  , USER);
-		end if;	
-		ln$history_duration := 0;
-	end loop;
-	commit;
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ordenar_resultados;
-
---!procedimiento para insertar datos en la tabla header
-procedure ins_resultados_header(pn_drawing_id			number
-							  , pv_b_type				varchar2
-							  , pn_digit				number
-							  , pn_history_cnt			number
-							  , xn_header_id			in out nocopy number
-							  , x_err_code    			in out nocopy number) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_header';							 
-begin
-	insert into olap_sys.position_digit_history_header(header_id
-													 , drawing_id
-													 , b_type
-													 , digit
-													 , history_cnt)
-	values((select nvl(max(header_id),0) + 1 from olap_sys.position_digit_history_header)
-	      , pn_drawing_id
-		  , pv_b_type
-		  , pn_digit
-		  , pn_history_cnt) returning header_id into xn_header_id;
-	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	  
-exception
-  when others then
-	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_resultados_header;
-
---!procedimiento para insertar datos en la tabla detail
-procedure ins_resultados_detail(pn_header_id			number
-							  , pn_history_digit		number
-							  , pn_match_cnt			number
-							  , pn_drawing_cnt			number
-							  , pv_drawing_list			varchar2
-							  , pn_next_drawing_id		number
-							  , pv_b_type				varchar2
-							  , x_err_code    			in out nocopy number) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_detail';							 
-begin
-	insert into olap_sys.position_digit_history_dtl(header_id
-												  , id
-												  , history_digit
-												  , match_cnt
-												  , drawing_cnt
-												  , drawing_list
-												  , next_drawing_id
-												  , b_type)
-	values(pn_header_id
-		 , (select nvl(max(id),0) + 1 from olap_sys.position_digit_history_dtl where header_id = pn_header_id and next_drawing_id = pn_next_drawing_id and b_type = pv_b_type)
-	     , pn_history_digit
-		 , pn_match_cnt
-		 , pn_drawing_cnt
-		 , pv_drawing_list
-		 , pn_next_drawing_id
-		 , pv_b_type);
-	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;	 
-exception
-  when others then
-	x_err_code := olap_sys.w_common_pkg.GN$FAILED_EXECUTION;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_resultados_detail;
-
---!procedimiento para englobar los inserts en la tabla header y tabla detail
-procedure ins_resultados_handler(pn_comb   			  number
-							   , pn_posicion 		  number
-							   , pn_max_id  		  number
-							   , pn_historico         number
-							   , ptbl$resultados	  gt$resultado_tbl
-							   , ptbl$resultados_next gt$resultado_next_tbl) is
-							 
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_resultados_handler';	
-	ln$comb_match			NUMBER := 0;
-	ln$next_match			NUMBER := 0;
-	ln$history_duration     NUMBER := 0;
-	ln$err_code             NUMBER := 0;
-	ln$header_id			NUMBER := 0;
-	lv$b_type				VARCHAR2(2) := 'B'||to_char(pn_posicion);
-	
-	cursor c_first is
-	select description pos
-    , lpad(attribute1,3,'000') match_cnt 
-    , lpad(attribute2,4,'0000') history_duration
-    , attribute3 history_ids
-	  from olap_sys.w_lookups_fs 
-	 where CONTEXT = 'ORDENAR_RESULTADOS'
-	 order by match_cnt desc, pos; 
-		
-begin
-	--!procedimiento para insertar datos en la tabla header
-	ins_resultados_header(pn_drawing_id      => pn_max_id
-					    , pv_b_type          => lv$b_type
-					    , pn_digit           => pn_comb
-					    , pn_history_cnt     => pn_historico
-					    , xn_header_id       => ln$header_id
-					    , x_err_code         => ln$err_code);
-	
-	if ln$err_code = olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION then							
-		for b in c_first loop
-			--!procedimiento para insertar datos en la tabla detail
-			ins_resultados_detail(pn_header_id		 => ln$header_id	
-								, pn_history_digit   => b.pos	
-								, pn_match_cnt       => b.match_cnt	
-								, pn_drawing_cnt     => b.history_duration	
-								, pv_drawing_list    => b.history_ids	
-								, pn_next_drawing_id => pn_max_id+1	
-								, pv_b_type          => lv$b_type	
-								, x_err_code         => ln$err_code);	
 								
-		end loop;
-		commit;
-	else
-		rollback;
-	end if;	
-exception
-  when others then
-	rollback;
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end ins_resultados_handler;
-
---!buscar el patron del numero siguiente en base a un numero datos
-procedure imprimir_resultados (pn_comb   			number
-                             , pn_posicion 			number
-							 , pn_max_id  			number
-							 , pn_historico         number
-							 , pn_order_by          number
-							 , ptbl$resultados		gt$resultado_tbl
-							 , ptbl$resultados_next gt$resultado_next_tbl) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'imprimir_resultados';
-	ln$comb_match			NUMBER := 0;
-	ln$next_match			NUMBER := 0;
-	ln$history_duration     NUMBER := 0;
-	
-	cursor c_first is
-	select description pos
-    , lpad(attribute1,3,'000') match_cnt 
-    , lpad(attribute2,4,'0000') history_duration
-    , attribute3 history_ids
-	  from olap_sys.w_lookups_fs 
-	 where CONTEXT = 'ORDENAR_RESULTADOS'
-	 order by attribute1 desc, attribute1; 
-
-	cursor c_two is
-	select description pos
-    , lpad(attribute1,3,'000') match_cnt 
-    , lpad(attribute2,4,'0000') history_duration
-    , attribute3 history_ids
-	  from olap_sys.w_lookups_fs 
-	 where CONTEXT = 'ORDENAR_RESULTADOS'
-	 order by attribute2, attribute1; 	 
-	 
-begin
-	dbms_output.put_line('pn_comb: '|| pn_comb);
-	dbms_output.put_line('pn_posicion: '|| pn_posicion);
-	dbms_output.put_line('historico: '||pn_historico);
-	dbms_output.put_line('max id: '||pn_max_id);
-	
-	--!conteo de matches de comb
-	for t in ptbl$resultados.first..ptbl$resultados.last loop
-		if ptbl$resultados(t).flag = '1' then
-			ln$comb_match := ln$comb_match + 1;
-		end if;
-	end loop;
-	dbms_output.put_line('comb match: '|| ln$comb_match);
-	dbms_output.put_line('digito'
-				  ||'~'||'match_cnt'
-				  ||'~'||'duration'
-				  ||'~'||'history_ids');	
-	
-	--!imprimir detalle de los match
-	if pn_order_by = 1 then
-		for b in c_first loop
-			dbms_output.put_line(b.pos
-						  ||'~'||b.match_cnt
-						  ||'~'||b.history_duration
-						  ||'~['||b.history_ids||']');
-		end loop;
-	end if;
-
-	--!imprimir detalle de los match
-	if pn_order_by = 2 then
-		for b in c_two loop
-			dbms_output.put_line(b.pos
-						  ||'~'||b.match_cnt
-						  ||'~'||b.history_duration
-						  ||'~['||b.history_ids||']');
-		end loop;
-	end if;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end imprimir_resultados;
-
-
---!buscar el patron del numero siguiente en base a un numero datos
-procedure numero_siguiente_wrapper  (pn_comb   		 number
-								   , pn_posicion	 number
-								   , pn_historico    number) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'numero_siguiente_wrapper';
-	ln$max_id   			number := 0;
-	ltbl$resultados			gt$resultado_tbl;
-	ltbl$resultados_next    gt$resultado_next_tbl;
-	ln$historico            number := 0;
-begin
-	ln$max_id := get_max_drawing_id (pv_drawing_type => 'mrtr');
-	if pn_historico > 0 then
-		ln$historico := ln$max_id - pn_historico;
-    else
-		ln$historico := pn_historico;
-    end if;
-	
-	cargar_historico_resultados(pn_historico => ln$historico
-	                          , xtbl$resultados => ltbl$resultados
-							  , xtbl$resultados_next => ltbl$resultados_next);
-							  
-	if ltbl$resultados.count > 0 then
-		buscar_siguiente_patron (pn_comb => pn_comb
-							   , pn_posicion => pn_posicion
-							   , pn_max_id => ln$max_id
-							   , xtbl$resultados => ltbl$resultados
-							   , xtbl$resultados_next => ltbl$resultados_next);
-		
-		ordenar_resultados (pn_max_id => ln$max_id
-						  , ptbl$resultados_next => ltbl$resultados_next);
-
-		--!procedimiento para englobar los inserts en la tabla header y tabla detail
-		ins_resultados_handler (pn_comb => pn_comb
-						      , pn_posicion => pn_posicion
-						      , pn_max_id => ln$max_id
-						      , pn_historico => pn_historico
-						      , ptbl$resultados => ltbl$resultados
-						      , ptbl$resultados_next => ltbl$resultados_next);
-		/*					
-		imprimir_resultados (pn_comb => pn_comb
-						   , pn_posicion => pn_posicion
-						   , pn_max_id => ln$max_id
-						   , pn_historico => pn_historico
-						   , pn_order_by => pn_order_by
-						   , ptbl$resultados => ltbl$resultados
-						   , ptbl$resultados_next => ltbl$resultados_next);*/
-	end if;				   
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end numero_siguiente_wrapper;
-
---!ejecuta el proceso numero_siguiente_wrapper para cada posicion del resultado
-procedure numero_siguiente_handler(pn_drawing_id	number
-								 --!0:indica que se revisa todo el historial, de lo contrario se indica el numero de dias que se requiere consultar
-								 , pn_historico    number default 0) is
-	LV$PROCEDURE_NAME       constant varchar2(30) := 'numero_siguiente_handler';
-	
-	cursor c_main (pn_drawing_id	number) is
-	with posicion_tbl as (
-	select gambling_id drawing_id
-		 , comb1 digit
-		 , 1 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id
-	union
-	select gambling_id drawing_id
-		 , comb2 digit
-		 , 2 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id
-	union
-	select gambling_id drawing_id
-		 , comb3 digit
-		 , 3 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id
-	union
-	select gambling_id drawing_id
-		 , comb4 digit
-		 , 4 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id
-	union
-	select gambling_id drawing_id
-		 , comb5 digit
-		 , 5 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id 
-	union
-	select gambling_id drawing_id
-		 , comb6 digit
-		 , 6 posicion
-	 from olap_sys.sl_gamblings
-	where gambling_id = pn_drawing_id
-	)
-	select drawing_id
-		 , digit
-		 , posicion
-	  from posicion_tbl;	
-begin
-	for k in c_main (pn_drawing_id => pn_drawing_id) loop
-		--!buscar el patron del numero siguiente en base a un numero datos
-		numero_siguiente_wrapper  (pn_comb   	 => k.digit
-							     , pn_posicion	 => k.posicion								 
-							     , pn_historico  => pn_historico); 
-
-		dbms_output.put_line(k.drawing_id||' - B'||to_char(k.posicion)||' - '||k.digit);
-		--!identificar el numero ganador
-		update olap_sys.position_digit_history_dtl
-		   set winner_flag = 'Y'
-		     , updated_date = sysdate
-		 where next_drawing_id = k.drawing_id
-		   and b_type = 'B'||to_char(k.posicion)
-		   and history_digit = k.digit;
-	end loop;
-	commit;	
-exception
-  when others then
-	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
-    raise; 
-end numero_siguiente_handler;
-	
-end w_new_pick_panorama_pkg;
+end w_pick_panorama_pkg;
 /
 show errors;
