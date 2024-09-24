@@ -14,7 +14,7 @@ DB_PWD = 'Ingenier1a'
 DB_HOST = 'localhost'
 DB_PORT = '1521'
 DB_SERVICE = 'lcl'
-GUARDA_PREDICCION=True
+GUARDA_PREDICCION=False
 
 # Suprimir todas las advertencias (no recomendado a menos que sepas lo que estás haciendo)
 warnings.filterwarnings("ignore")
@@ -76,7 +76,7 @@ def create_gl_dataframe (sorteo_id:int):
 			query_stmt = query_stmt + " , COLOR_LEY_TERCIO LT"
 			query_stmt = query_stmt + " , COLOR_UBICACION FR"
 			query_stmt = query_stmt + " , NVL(CICLO_APARICION,3) CA"
-			query_stmt = query_stmt + " , NVL(PRONOS_CICLO,0) PXC"
+			query_stmt = query_stmt + " , CASE WHEN PRONOS_CICLO IS NOT NULL THEN 1 ELSE 0 END PXC"
 			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 1 AND INPAR_NUMBER_FLAG IN (0,1) THEN 1 ELSE 0 END PRIMO"
 			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 1 THEN 1 ELSE 0 END IMPAR"
 			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 0 THEN 1 ELSE 0 END PAR"
@@ -105,7 +105,7 @@ def create_gl_dataframe (sorteo_id:int):
 		conn.close()
 
 
-#prediccion Logistic Regression
+#prediccion ley del tercio
 def prediccion_lt(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
 	try:
 		# print(f"entrena_modelos {label}, {features}")
@@ -202,6 +202,593 @@ def prediccion_lt(df, label, sorteo_id, posicion, prediccion_dic, nombre_algorit
 		print(f"Ocurrió un error durante el procesamiento: {e}")
 		raise
 
+
+#prediccion frecuencia
+def prediccion_fr(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'IMPAR']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#prediccion de numeros primos
+def prediccion_primo(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#prediccion de numeros impares
+def prediccion_impar(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+#prediccion de numeros pares
+def prediccion_par(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+#prediccion de numeros con cambio
+def prediccion_change(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#prediccion de numeros
+def prediccion_digit(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label (LT)
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "lt_log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "lt_rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
 # Chequear y visualizar NaNs en el DataFrame
 def check_nans(df) -> int:
 	# Mostrar todas las filas que contienen al menos un valor NaN
@@ -219,55 +806,6 @@ def check_nans(df) -> int:
 		return 1
 	else:
 		return 0
-
-#proceso encargado de ejecutar todos los modelos de prediccion
-def procesa_predicciones(df, nombre_algoritmo:str, label:str, id_base:int):
-
-	# arreglo para almacenar el valor de las predicciones por cada b_type
-	prediccion_gl = {
-		"nombre_algoritmo": None,
-		"prediccion_tipo": None,
-		"prediccion_sorteo": 0,
-		"siguiente_sorteo_1": 0,
-		"prediccion_1": 0,
-		"precision_1": 0.0,
-		"siguiente_sorteo_2": 0,
-		"prediccion_2": 0,
-		"precision_2": 0.0,
-		"siguiente_sorteo_3": 0,
-		"prediccion_3": 0,
-		"precision_3": 0.0,
-		"siguiente_sorteo_4": 0,
-		"prediccion_4": 0,
-		"precision_4": 0.0,
-		"siguiente_sorteo_5": 0,
-		"prediccion_5": 0,
-		"precision_5": 0.0,
-		"siguiente_sorteo_6": 0,
-		"prediccion_6": 0,
-		"precision_6": 0.0
-	}
-
-	for b_type_id in range(1,7):
-		#formacion dinamica del valor de la columna b_type
-		b_type = "B" + str(b_type_id)
-
-		#filtrado de la info del dataset en base a valor dinamico de b_type
-		df_b_type = df[df["B_TYPE"]==b_type]
-		#print(f"{b_type}.counr: {df_b_type.count()}")
-
-		# prediccion relacionadas al ley del tercio
-		if label == "LT":
-			prediccion_lt(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
-
-			#ya que estan completas las predicciones de la jugada se imprimen
-			if b_type_id == 6:
-				print(prediccion_gl)
-
-	if GUARDA_PREDICCION:
-		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
-
 
 
 #ejecutar procedimiento de base de datos para guardar la info de las predicciones
@@ -314,6 +852,69 @@ def ejecutar_procedimiento(prediccion_info):
 		# Cerrar la conexion
 		conn.close()
 
+
+#proceso encargado de ejecutar todos los modelos de prediccion
+def procesa_predicciones(df, nombre_algoritmo:str, label:str, id_base:int):
+
+	# arreglo para almacenar el valor de las predicciones por cada b_type
+	prediccion_gl = {
+		"nombre_algoritmo": None,
+		"prediccion_tipo": None,
+		"prediccion_sorteo": 0,
+		"siguiente_sorteo_1": 0,
+		"prediccion_1": 0,
+		"precision_1": 0.0,
+		"siguiente_sorteo_2": 0,
+		"prediccion_2": 0,
+		"precision_2": 0.0,
+		"siguiente_sorteo_3": 0,
+		"prediccion_3": 0,
+		"precision_3": 0.0,
+		"siguiente_sorteo_4": 0,
+		"prediccion_4": 0,
+		"precision_4": 0.0,
+		"siguiente_sorteo_5": 0,
+		"prediccion_5": 0,
+		"precision_5": 0.0,
+		"siguiente_sorteo_6": 0,
+		"prediccion_6": 0,
+		"precision_6": 0.0
+	}
+
+	for b_type_id in range(1,7):
+		#formacion dinamica del valor de la columna b_type
+		b_type = "B" + str(b_type_id)
+
+		#filtrado de la info del dataset en base a valor dinamico de b_type
+		df_b_type = df[df["B_TYPE"]==b_type]
+		#print(f"{b_type}.counr: {df_b_type.count()}")
+
+		# prediccion relacionadas al ley del tercio
+		if label == "LT":
+			prediccion_lt(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == "FR":
+			prediccion_fr(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'PRIMO':
+			prediccion_primo(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'IMPAR':
+			prediccion_impar(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'PAR':
+			prediccion_par(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'CHNG':
+			prediccion_change(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'DIGIT':
+			prediccion_digit(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+
+		#ya que estan completas las predicciones de la jugada se imprimen
+		if b_type_id == 6:
+			print(prediccion_gl)
+
+	if GUARDA_PREDICCION:
+		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
+		ejecutar_procedimiento(prediccion_gl)
+
+
+
 def procesa_tarea():
 	#recupera el maximo ID del sorteo que se va a jugar
 	id_base = qry_id_base()
@@ -327,8 +928,74 @@ def procesa_tarea():
 
 	#si no hay valores nulos se procede a realizar la prediccion
 	if nan_count == 0:
-		#definimos el label que se va a predecir
+		#ley del tercio
 		label = "LT"
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#ley del tercio
+		label = "FR"
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#numeros primos
+		label = 'PRIMO'
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#numeros impares
+		label = 'IMPAR'
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#numeros pares
+		label = 'PAR'
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#numeros con cambio
+		label = 'CHNG'
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_log_reg"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		print("-------------------------------------")
+		nombre_algoritmo = "lt_rf"
+		procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+		#digits
+		label = 'DIGIT'
 
 		print("-------------------------------------")
 		nombre_algoritmo = "lt_log_reg"
