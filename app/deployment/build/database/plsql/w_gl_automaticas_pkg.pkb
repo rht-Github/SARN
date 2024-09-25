@@ -810,6 +810,23 @@ begin
 		upd_gl_automaticas_detail(pn_drawing_id => pn_drawing_id
 								, pv_ca_comb_flag => pv_ca_comb_flag
 								, pn_list_id    => k.list_id);
+								
+		--!actualizar bandera de jugadas a Y para las jugadas mas ganadoras
+		--!cuyo percentile sea mayour a 55
+		update olap_sys.gl_automaticas_detail 
+		   set jugar_flag='Y'
+			 , updated_date = sysdate
+		 where jugar_flag='N' 
+		   and aciertos_accum > (   
+		with group_tbl as (   
+		select aciertos_accum
+			 , count(1) cnt
+		  from olap_sys.gl_automaticas_detail 
+		 where jugar_flag='N' 
+		 group by aciertos_accum
+		)
+		select percentile_disc(0.55) within group (order by aciertos_accum) perc_aciertos
+		  from group_tbl);								
 	end loop;						
 exception
   when others then
@@ -822,49 +839,66 @@ end upd_gl_automaticas_handler;
 procedure upd_predicciones_all(pn_drawing_id		number) is
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_predicciones_all'; 
 	lv$prediccion_nombre		  varchar2(30);
+	ln$sorteo_anterior            number := pn_drawing_id -1;
+	
 	cursor c_resultados(pn_drawing_id		number) is
 	with resultados_tbl as (
 	select comb1, comb2, comb3, comb4, comb5, comb6
 		 , nvl(cu1,'#') fr1, nvl(cu2,'#') fr2, nvl(cu3,'#') fr3, nvl(cu4,'#') fr4, nvl(cu5,'#') fr5, nvl(cu6,'#') fr6
 		 , nvl(clt1,'#') lt1, nvl(clt2,'#') lt2, nvl(clt3,'#') lt3, nvl(clt4,'#') lt4, nvl(clt5,'#') lt5, nvl(clt6,'#') lt6
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 0 else 
-		   case when mod(comb1,2) = 0 then 2 else 
-		   case when mod(comb1,2) > 0 then 1 end end end p1
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 0 else 
-		   case when mod(comb2,2) = 0 then 2 else 
-		   case when mod(comb2,2) > 0 then 1 end end end p2       
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 0 else 
-		   case when mod(comb3,2) = 0 then 2 else 
-		   case when mod(comb3,2) > 0 then 1 end end end p3
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 0 else 
-		   case when mod(comb4,2) = 0 then 2 else 
-		   case when mod(comb4,2) > 0 then 1 end end end p4 
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 0 else 
-		   case when mod(comb5,2) = 0 then 2 else 
-		   case when mod(comb5,2) > 0 then 1 end end end p5       
-		 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 0 else 
-		   case when mod(comb6,2) = 0 then 2 else 
-		   case when mod(comb6,2) > 0 then 1 end end end p6
-		 , decode(pxc1,null,0,1) pxc1, decode(pxc2,null,0,1) pxc2, decode(pxc3,null,0,1) pxc3, decode(pxc4,null,0,1) pxc4,    decode(pxc5,null,0,1) pxc5, decode(pxc6,null,0,1) pxc6
-		 , decode(pre1,null,0,2) pre1, decode(pre2,null,0,2) pre2, decode(pre3,null,0,2) pre3, decode(pre4,null,0,2) pre4, decode(pre5,null,0,2) pre5, decode(pre6,null,0,2) pre6
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb1) = 1 then 1 else 0 end primo1
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb2) = 1 then 1 else 0 end primo2       
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb3) = 1 then 1 else 0 end primo3
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb4) = 1 then 1 else 0 end primo4 
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb5) = 1 then 1 else 0 end primo5       
+		 , case when olap_sys.w_common_pkg.is_prime_number(comb6) = 1 then 1 else 0 end primo6
+		 , case when mod(comb1,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb1) = 0 then 1 else 0 end impar1
+		 , case when mod(comb2,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb2) = 0 then 1 else 0 end impar2       
+		 , case when mod(comb3,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb3) = 0 then 1 else 0 end impar3
+		 , case when mod(comb4,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb4) = 0 then 1 else 0 end impar4 
+		 , case when mod(comb5,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb5) = 0 then 1 else 0 end impar5       
+		 , case when mod(comb6,2) > 0 and olap_sys.w_common_pkg.is_prime_number(comb6) = 0 then 1 else 0 end impar6   
+		 , case when mod(comb1,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb1) = 0 then 1 else 0 end par1
+		 , case when mod(comb2,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb2) = 0 then 1 else 0 end par2       
+		 , case when mod(comb3,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb3) = 0 then 1 else 0 end par3
+		 , case when mod(comb4,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb4) = 0 then 1 else 0 end par4 
+		 , case when mod(comb5,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb5) = 0 then 1 else 0 end par5       
+		 , case when mod(comb6,2) = 0 and olap_sys.w_common_pkg.is_prime_number(comb6) = 0 then 1 else 0 end par6             
+         , case when chng_pos1 is null then 0 else 1 end chng1 
+         , case when chng_pos2 is null then 0 else 1 end chng2 
+         , case when chng_pos3 is null then 0 else 1 end chng3 
+         , case when chng_pos4 is null then 0 else 1 end chng4 
+         , case when chng_pos5 is null then 0 else 1 end chng5 
+         , case when chng_pos6 is null then 0 else 1 end chng6 
+         , case when pre1 is null then 0 else 1 end pref1
+         , case when pre2 is null then 0 else 1 end pref2
+         , case when pre3 is null then 0 else 1 end pref3
+         , case when pre4 is null then 0 else 1 end pref4
+         , case when pre5 is null then 0 else 1 end pref5
+         , case when pre6 is null then 0 else 1 end pref6
+         , case when pxc1 is null then 0 else 1 end pxc1
+         , case when pxc2 is null then 0 else 1 end pxc2
+         , case when pxc3 is null then 0 else 1 end pxc3
+         , case when pxc4 is null then 0 else 1 end pxc4
+         , case when pxc5 is null then 0 else 1 end pxc5
+         , case when pxc6 is null then 0 else 1 end pxc6		 
 	  from olap_sys.pm_mr_resultados_v2
 	 where gambling_id = pn_drawing_id
 	)
-	, output_tbl as (
-	select comb1, comb2, comb3, comb4, comb5, comb6, fr1, fr2, fr3, fr4, fr5, fr6, lt1, lt2, lt3, lt4, lt5, lt6, p1, p2, p3, p4, p5, p6
-		 , case when pxc1 = 0 and pre1 = 0 then 0 else case when pxc1 = 0 and pre1 > 0 then 3 else case when pxc1 > 0 and pre1 = 0 then 4 else case when pxc1 > 0 and pre1 > 0 then 5 else 9 end end end end pre1
-		 , case when pxc2 = 0 and pre2 = 0 then 0 else case when pxc2 = 0 and pre2 > 0 then 3 else case when pxc2 > 0 and pre2 = 0 then 4 else case when pxc2 > 0 and pre2 > 0 then 5 else 9 end end end end pre2
-		 , case when pxc3 = 0 and pre3 = 0 then 0 else case when pxc3 = 0 and pre3 > 0 then 3 else case when pxc3 > 0 and pre3 = 0 then 4 else case when pxc3 > 0 and pre3 > 0 then 5 else 9 end end end end pre3
-		 , case when pxc4 = 0 and pre4 = 0 then 0 else case when pxc4 = 0 and pre4 > 0 then 3 else case when pxc4 > 0 and pre4 = 0 then 4 else case when pxc4 > 0 and pre4 > 0 then 5 else 9 end end end end pre4
-		 , case when pxc5 = 0 and pre5 = 0 then 0 else case when pxc5 = 0 and pre5 > 0 then 3 else case when pxc5 > 0 and pre5 = 0 then 4 else case when pxc5 > 0 and pre5 > 0 then 5 else 9 end end end end pre5
-		 , case when pxc6 = 0 and pre6 = 0 then 0 else case when pxc6 = 0 and pre6 > 0 then 3 else case when pxc6 > 0 and pre6 = 0 then 4 else case when pxc6 > 0 and pre6 > 0 then 5 else 9 end end end end pre6
-	  from resultados_tbl   
-	)
-	select comb1, comb2, comb3, comb4, comb5, comb6, fr1, fr2, fr3, fr4, fr5, fr6, lt1, lt2, lt3, lt4, lt5, lt6, p1, p2, p3, p4, p5, p6, pre1, pre2, pre3, pre4, pre5, pre6
-	  from output_tbl;
+	select comb1, comb2, comb3, comb4, comb5, comb6, 
+           fr1, fr2, fr3, fr4, fr5, fr6, 
+           lt1, lt2, lt3, lt4, lt5, lt6, 
+           primo1, primo2, primo3, primo4, primo5, primo6, 
+           impar1, impar2, impar3, impar4, impar5, impar6, 
+           par1, par2, par3, par4, par5, par6,
+           chng1, chng2, chng3, chng4, chng5, chng6,
+		   pref1, pref2, pref3, pref4, pref5, pref6,
+           pxc1, pxc2, pxc3, pxc4, pxc5, pxc6
+	  from resultados_tbl;
 begin 
 --DBMS_OUTPUT.PUT_LINE('-------------------------------');
 --DBMS_OUTPUT.PUT_LINE(LV$PROCEDURE_NAME);
+--DBMS_OUTPUT.PUT_LINE('pn_drawing_id: '||pn_drawing_id);
 	--!limpiando la tabla
 	update olap_sys.predicciones_all
 	   set match1 = 0
@@ -873,9 +907,12 @@ begin
 		 , match4 = 0
 		 , match5 = 0
 		 , match6 = 0
-	 where prediccion_sorteo = pn_drawing_id;	 
+	 where prediccion_sorteo = ln$sorteo_anterior;	 
 	
 	for k in c_resultados(pn_drawing_id => pn_drawing_id) loop
+		dbms_output.put_line('ley del tercio');
+		dbms_output.put_line(k.lt1||' - '||k.lt2||' - '||k.lt3||' - '||k.lt4||' - '||k.lt5||' - '||k.lt6);
+		--ley del tercio
 		update olap_sys.predicciones_all
 		   set res1 = k.lt1
 		     , res2 = k.lt2
@@ -883,9 +920,12 @@ begin
 			 , res4 = k.lt4
 			 , res5 = k.lt5
 			 , res6 = k.lt6
-		 where prediccion_sorteo = pn_drawing_id
+		 where prediccion_sorteo = ln$sorteo_anterior
 		   and prediccion_tipo = 'LT';
-		/*
+
+		dbms_output.put_line('frecuencia');
+		dbms_output.put_line(k.fr1||' - '||k.fr2||' - '||k.fr3||' - '||k.fr4||' - '||k.fr5||' - '||k.fr6);		
+		--frecuencia
 		update olap_sys.predicciones_all
 		   set res1 = k.fr1
 		     , res2 = k.fr2
@@ -893,25 +933,64 @@ begin
 			 , res4 = k.fr4
 			 , res5 = k.fr5
 			 , res6 = k.fr6
-		 where prediccion_sorteo = pn_drawing_id
-		   and prediccion_tipo = 'Frecuencia';
-		*/
-		/*estos son los valores validos para esta actualizacion
-		0: Primo
-		1: Impar
-		2: Par
-		*/
-		/*
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'FR';
+		
+		dbms_output.put_line('numeros primos');
+		dbms_output.put_line(k.primo1||' - '||k.primo2||' - '||k.primo3||' - '||k.primo4||' - '||k.primo5||' - '||k.primo6);		
+		--numeros primos
 		update olap_sys.predicciones_all
-		   set res1 = k.p1
-		     , res2 = k.p2
-			 , res3 = k.p3
-			 , res4 = k.p4
-			 , res5 = k.p5
-			 , res6 = k.p6
-		 where prediccion_sorteo = pn_drawing_id
-		   and prediccion_tipo = 'Primo_Impar_Par';
+		   set res1 = k.primo1
+		     , res2 = k.primo2
+			 , res3 = k.primo3
+			 , res4 = k.primo4
+			 , res5 = k.primo5
+			 , res6 = k.primo6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'PRIMO';
 
+		dbms_output.put_line('numeros impares');
+		dbms_output.put_line(k.impar1||' - '||k.impar2||' - '||k.impar3||' - '||k.impar4||' - '||k.impar5||' - '||k.impar6);
+		--numeros impares
+		update olap_sys.predicciones_all
+		   set res1 = k.impar1
+		     , res2 = k.impar2
+			 , res3 = k.impar3
+			 , res4 = k.impar4
+			 , res5 = k.impar5
+			 , res6 = k.impar6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'IMPAR';			   
+
+		dbms_output.put_line('numeros pares');
+		dbms_output.put_line(k.par1||' - '||k.par2||' - '||k.par3||' - '||k.par4||' - '||k.par5||' - '||k.par6);
+		--numeros pares
+		update olap_sys.predicciones_all
+		   set res1 = k.par1
+		     , res2 = k.par2
+			 , res3 = k.par3
+			 , res4 = k.par4
+			 , res5 = k.par5
+			 , res6 = k.par6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'PAR';			   
+
+		dbms_output.put_line('numeros con cambio de posicion');
+		dbms_output.put_line(k.chng1||' - '||k.chng2||' - '||k.chng3||' - '||k.chng4||' - '||k.chng5||' - '||k.chng6);
+		--numeros pares
+		update olap_sys.predicciones_all
+		   set res1 = k.chng1
+		     , res2 = k.chng2
+			 , res3 = k.chng3
+			 , res4 = k.chng4
+			 , res5 = k.chng5
+			 , res6 = k.chng6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'CHNG';	
+
+		dbms_output.put_line('digits');
+		dbms_output.put_line(k.comb1||' - '||k.comb2||' - '||k.comb3||' - '||k.comb4||' - '||k.comb5||' - '||k.comb6);
+		--digits
 		update olap_sys.predicciones_all
 		   set res1 = k.comb1
 		     , res2 = k.comb2
@@ -919,9 +998,35 @@ begin
 			 , res4 = k.comb4
 			 , res5 = k.comb5
 			 , res6 = k.comb6
-		 where prediccion_sorteo = pn_drawing_id
-		   and prediccion_tipo = 'Numerica';			   
-		*/
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'DIGIT';	
+
+		dbms_output.put_line('favorables');
+		dbms_output.put_line(k.pref1||' - '||k.pref2||' - '||k.pref3||' - '||k.pref4||' - '||k.pref5||' - '||k.pref6);
+		--digits
+		update olap_sys.predicciones_all
+		   set res1 = k.pref1
+		     , res2 = k.pref2
+			 , res3 = k.pref3
+			 , res4 = k.pref4
+			 , res5 = k.pref5
+			 , res6 = k.pref6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'PREF';
+
+		dbms_output.put_line('PXC');
+		dbms_output.put_line(k.pxc1||' - '||k.pxc2||' - '||k.pxc3||' - '||k.pxc4||' - '||k.pxc5||' - '||k.pxc6);
+		--digits
+		update olap_sys.predicciones_all
+		   set res1 = k.pxc1
+		     , res2 = k.pxc2
+			 , res3 = k.pxc3
+			 , res4 = k.pxc4
+			 , res5 = k.pxc5
+			 , res6 = k.pxc6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and prediccion_tipo = 'PXC';	
+		   
 		/*estos son los valores validos para esta actualizacion
 		cuando pxcN tiene valor se transforma en 1
 		cuando preN tiene valor se transforma en 2
@@ -944,6 +1049,45 @@ begin
 		*/   
 	end loop;
 
+    --actualizando las columnas match para las predicciones relacionadas a impar, par y primo
+	update olap_sys.predicciones_all
+	   set match1 = case when pred1 = '0' and res1 = '0' then 0 when pred1 = res1 then 1 else 0 end
+		 , match2 = case when pred2 = '0' and res2 = '0' then 0 when pred2 = res2 then 1 else 0 end
+		 , match3 = case when pred3 = '0' and res3 = '0' then 0 when pred3 = res3 then 1 else 0 end
+		 , match4 = case when pred4 = '0' and res4 = '0' then 0 when pred4 = res4 then 1 else 0 end
+		 , match5 = case when pred5 = '0' and res5 = '0' then 0 when pred5 = res5 then 1 else 0 end
+		 , match6 = case when pred6 = '0' and res6 = '0' then 0 when pred6 = res6 then 1 else 0 end
+	 where prediccion_sorteo = ln$sorteo_anterior
+       and prediccion_tipo in ('IMPAR','PAR','PRIMO');
+
+    --actualizando las columnas match para las predicciones relacionadas a CHNG
+	update olap_sys.predicciones_all
+	   set match1 = case when pred1 = res1 then 1 else 0 end
+		 , match2 = case when pred2 = res2 then 1 else 0 end
+		 , match3 = case when pred3 = res3 then 1 else 0 end
+		 , match4 = case when pred4 = res4 then 1 else 0 end
+		 , match5 = case when pred5 = res5 then 1 else 0 end
+		 , match6 = case when pred6 = res6 then 1 else 0 end
+	 where prediccion_sorteo = ln$sorteo_anterior
+       and prediccion_tipo in ('CHNG','DIGIT');
+	   
+    --actualizando las columnas match para las predicciones relacionadas a LT y FR
+	update olap_sys.predicciones_all
+	   set match1 = case when pred1 = '#' and res1 = '#' then 0 when pred1 = res1 then 1 else 0 end
+		 , match2 = case when pred2 = '#' and res2 = '#' then 0 when pred2 = res2 then 1 else 0 end
+		 , match3 = case when pred3 = '#' and res3 = '#' then 0 when pred3 = res3 then 1 else 0 end
+		 , match4 = case when pred4 = '#' and res4 = '#' then 0 when pred4 = res4 then 1 else 0 end
+		 , match5 = case when pred5 = '#' and res5 = '#' then 0 when pred5 = res5 then 1 else 0 end
+		 , match6 = case when pred6 = '#' and res6 = '#' then 0 when pred6 = res6 then 1 else 0 end
+	 where prediccion_sorteo = ln$sorteo_anterior
+       and prediccion_tipo in ('LT','FR');
+
+    --actualizando el contador de match
+	update olap_sys.predicciones_all
+	   set match_cnt = match1 + match2 + match3 + match4 + match5 + match6
+	     , prediccion_fecha = (select to_date(gambling_date,'DD-MM-YYYY') from olap_sys.pm_mr_resultados_v2 where gambling_id = ln$sorteo_anterior) 
+	 where prediccion_sorteo = ln$sorteo_anterior;	
+	 
 exception
  when others then
 	DBMS_OUTPUT.PUT_LINE(SQLERRM);		 
@@ -1564,22 +1708,22 @@ begin
 	      , pn_sorteo
 	      , pv_tipo
 		  , pn_sig_sorteo1
-	      , decode(pv_pred1,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred1,'1','R','2','G','3','B') else pv_pred1 end
 	      , pf_pres1
 		  , pn_sig_sorteo2
-	      , decode(pv_pred2,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred2,'1','R','2','G','3','B') else pv_pred2 end
 	      , pf_pres2
 		  , pn_sig_sorteo3
-	      , decode(pv_pred3,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred3,'1','R','2','G','3','B') else pv_pred3 end
 	      , pf_pres3
 		  , pn_sig_sorteo4
-	      , decode(pv_pred4,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred4,'1','R','2','G','3','B') else pv_pred4 end
 	      , pf_pres4
 		  , pn_sig_sorteo5
-	      , decode(pv_pred5,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred5,'1','R','2','G','3','B') else pv_pred5 end
 	      , pf_pres5
 		  , pn_sig_sorteo6
-	      , decode(pv_pred6,'1','R','2','G','3','B')
+	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred6,'1','R','2','G','3','B') else pv_pred6 end
 	      , pf_pres6);
 	commit;		  
 exception

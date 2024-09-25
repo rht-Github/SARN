@@ -10570,13 +10570,13 @@ begin
 	end loop;
 	
 	--!marcar las jugadas ganadoras
-	for r in c_resultados (pn_drawing_id => ln$drawing_id_ini) loop
+	/*for r in c_resultados (pn_drawing_id => ln$drawing_id_ini) loop
 		update olap_sys.s_gl_mapas_fre_lt_cnt
 		   set winner_flag_end = r.winner_flag
 		 where drawing_id_ini = r.drawing_id
 		   and b_type_end = r.b_type
 		   and gl_color_end = r.lt; 	
-	end loop;
+	end loop;*/
 	x_err_code := olap_sys.w_common_pkg.GN$SUCCESSFUL_EXECUTION;
 exception
   when others then
