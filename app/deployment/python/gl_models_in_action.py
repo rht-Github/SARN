@@ -97,14 +97,21 @@ def create_gl_dataframe (sorteo_id:int, sorteo_base:int=0):
 			if sorteo_base > 0:
 				query_stmt = query_stmt + " AND DRAWING_ID >= " + str(sorteo_base)
 			query_stmt = query_stmt + " ORDER BY DRAWING_ID, B_TYPE)"
-			query_stmt = query_stmt + " SELECT *"
+			if sorteo_base > 0:
+				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG"
+				query_stmt = query_stmt + " , CASE WHEN PXC = 0 AND PREF = 0 THEN 0"
+				query_stmt = query_stmt + " WHEN PXC = 0 AND PREF = 1 THEN 1"
+				query_stmt = query_stmt + " WHEN PXC = 1 AND PREF = 0 THEN 2"
+				query_stmt = query_stmt + " WHEN PXC = 1 AND PREF = 1 THEN 3 END PXC_PREF"
+			else:
+				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG"
 			query_stmt = query_stmt + " FROM GIGA_TBL"
 
 			cursor = conn.cursor()
 			cursor.execute(query_stmt)
 			# Convirtiendo el resultset en un DataFrame de Pandas
 			if sorteo_base > 0:
-				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','PREF']  # Nombres de columnas
+				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','PXC_PREF']  # Nombres de columnas
 			else:
 				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO','IMPAR','PAR','CHNG']  # Nombres de columnas
 			df = pd.DataFrame(cursor.fetchall(), columns=columns)
@@ -1016,8 +1023,8 @@ def prediccion_digit(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		raise
 
 
-#prediccion de los numeros favorables
-def prediccion_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+#prediccion de numeros impares
+def prediccion_pxc(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
 	try:
 		# print(f"entrena_modelos {label}, {features}")
 		#print(df.count())
@@ -1025,7 +1032,7 @@ def prediccion_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG', 'IMPAR']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -1114,8 +1121,8 @@ def prediccion_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 		raise
 
 
-#prediccion de numeros impares
-def prediccion_pxc(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+#prediccion de combinacion de pronostico por ciclo junto con numeros favorables
+def prediccion_pxc_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
 	try:
 		# print(f"entrena_modelos {label}, {features}")
 		#print(df.count())
@@ -1123,7 +1130,7 @@ def prediccion_pxc(df, label, sorteo_id, posicion, prediccion_dic, nombre_algori
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG', 'IMPAR']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -1327,8 +1334,8 @@ def procesa_predicciones(df, nombre_algoritmo:str, label:str, id_base:int):
 			prediccion_change(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 		elif label == 'DIGIT':
 			prediccion_digit(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
-		elif label == 'PREF':
-			prediccion_pref(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'PXC_PREF':
+			prediccion_pxc_pref(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 		elif label == 'PXC':
 			prediccion_pxc(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 
@@ -1515,7 +1522,7 @@ def procesa_tarea_2():
 	#si no hay valores nulos se procede a realizar la prediccion
 	if nan_count == 0:
 		#numeros favorables
-		label = "PREF"
+		label = "PXC_PREF"
 
 		print("-------------------------------------")
 		nombre_algoritmo = "lt_log_reg"
