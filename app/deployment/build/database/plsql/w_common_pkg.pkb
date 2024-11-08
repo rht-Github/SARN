@@ -6488,7 +6488,56 @@ exception
 		return -1;
 		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
 end contar_igualdades;	
-					  
+
+--!comparar loa valores de los 2 parametros de entrada y regresa un valor equivalente para cada caso
+--!dependiendo de id del sorteo
+function get_favorito(pn_drawing_id		number
+				    , pn_pxc				number
+				    , pv_preferido		varchar2) return number is
+	LV$PROCEDURE_NAME       	constant varchar2(30) := 'get_favorito';	
+	lv$pxc								 number(1) := -1;
+	lv$preferido						 number(1) := -1;
+begin
+	--!convirtiendo pxc
+	if pn_drawing_id < 594 then
+		lv$pxc := -1;
+	else
+		if pn_pxc is null then
+			lv$pxc := 0;
+		else
+			lv$pxc := 1;					
+		end if;
+	end if;
+	
+	--!convirtiendo preferido
+	if pn_drawing_id < 898 then
+		lv$preferido := -1;		
+	else
+		if pv_preferido is null then
+			lv$preferido := 0;			
+		else
+			lv$preferido := 1;
+		end if;
+	end if;	
+
+	--!retorna numero equivalente
+	if lv$pxc = 0 and lv$preferido = 0 then
+		return 0;
+	elsif lv$pxc = 0 and lv$preferido = 1 then
+		return 1;
+	elsif lv$pxc = 1 and lv$preferido = 0 then
+		return 2;
+	elsif lv$pxc = 1 and lv$preferido = 1 then
+		return 3;
+	else
+		return -1;
+	end if;
+exception
+	when others then
+		return -1;
+		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
+end get_favorito;	
+					
 end w_common_pkg;
 /
 show errors;

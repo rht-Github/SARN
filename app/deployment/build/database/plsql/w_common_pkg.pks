@@ -1160,6 +1160,12 @@ function get_mapa_numeros_primos(pn_drawing_id	number
 --!cuenta las igualdades de valores entre dos cadenas de valores separadas por comas
 function contar_igualdades (pv_string1		varchar2
 						  , pv_string2		varchar2) return number;
+
+--!comparar loa valores de los 2 parametros de entrada y regresa un valor equivalente para cada caso
+--!dependiendo de id del sorteo
+function get_favorito(pn_drawing_id		number
+				    , pn_pxc				number
+				    , pv_preferido		varchar2) return number;	
 						  
 end w_common_pkg;
 /
