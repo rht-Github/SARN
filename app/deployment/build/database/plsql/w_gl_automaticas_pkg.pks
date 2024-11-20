@@ -15,7 +15,11 @@ select drawing_id id
 	 , nvl(winner_flag,'N') winner
      , case when olap_sys.w_common_pkg.is_prime_number(digit) = 1 then 0 else 
        case when mod(digit,2) = 0 then 2 else 
-       case when mod(digit,2) > 0 then 1 end end end primo_impar_par	 
+       case when mod(digit,2) > 0 then 1 end end end primo_impar_par
+	 , case when pronos_ciclo is null and preferencia_flag is null then 0
+		    when pronos_ciclo is null and preferencia_flag is not null then 1
+		    when pronos_ciclo is not null and preferencia_flag is null then 2
+		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref
   from olap_sys.s_calculo_stats
  where drawing_id = pn_drawing_id
  order by b_type, digit;
@@ -82,7 +86,14 @@ procedure predicciones_all_handler(pv_nombre				varchar2
 								 , pf_pres5					float
 								 , pn_sig_sorteo6           number
 								 , pv_pred6					varchar2
-								 , pf_pres6					float);									   
+								 , pf_pres6					float);		
+
+--!insertar conteo de los digitos acerca de jugadas y resultados
+procedure digit_counts_handler(pn_drawing_id		number);								 
+
+--!mostrar las predicciones para cada b_type para el ultimo sorteo
+procedure comparativo_lt_handler;
+
 end w_gl_automaticas_pkg;
 /
 show errors;

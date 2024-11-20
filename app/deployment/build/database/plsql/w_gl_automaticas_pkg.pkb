@@ -416,7 +416,7 @@ begin
 			     , LT1 = i.lt
 				 , CA1 = i.ca
 				 , PXC1 = i.pxc
-				 , PF1 = i.pref
+				 , PF1 = i.pxc_pref
 				 , CHG1 = I.CHG
 				 , SORTEO_ACTUAL = pn_drawing_id
 		     where IA1 = i.digit
@@ -435,7 +435,7 @@ begin
 			     , LT2 = i.lt
 				 , CA2 = i.ca
 				 , PXC2 = i.pxc
-				 , PF2 = i.pref
+				 , PF2 = i.pxc_pref
 				 , CHG2 = I.CHG
 		     where IA2 = i.digit
 			   and LIST_ID = pn_list_id
@@ -453,7 +453,7 @@ begin
 			     , LT3 = i.lt
 				 , CA3 = i.ca
 				 , PXC3 = i.pxc
-				 , PF3 = i.pref
+				 , PF3 = i.pxc_pref
 				 , CHG3 = I.CHG
 		     where IA3 = i.digit
 			   and LIST_ID = pn_list_id
@@ -471,7 +471,7 @@ begin
 			     , LT4 = i.lt
 				 , CA4 = i.ca
 				 , PXC4 = i.pxc
-				 , PF4 = i.pref
+				 , PF4 = i.pxc_pref
 				 , CHG4 = I.CHG
 		     where IA4 = i.digit
 			   and LIST_ID = pn_list_id
@@ -489,7 +489,7 @@ begin
 			     , LT5 = i.lt
 				 , CA5 = i.ca
 				 , PXC5 = i.pxc
-				 , PF5 = i.pref
+				 , PF5 = i.pxc_pref
 				 , CHG5 = I.CHG
 		     where IA5 = i.digit
 			   and LIST_ID = pn_list_id
@@ -507,7 +507,7 @@ begin
 			     , LT6 = i.lt
 				 , CA6 = i.ca
 				 , PXC6 = i.pxc
-				 , PF6 = i.pref
+				 , PF6 = i.pxc_pref
 				 , CHG6 = I.CHG
 		     where IA6 = i.digit
 			   and LIST_ID = pn_list_id
@@ -790,7 +790,7 @@ procedure aciertos_repetidos_handler(pn_drawing_id		number) is
 begin
 	for k in c_automaticas_header loop
 		--!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
-		contar_aciertos_repetidos(pn_drawing_id	=> pn_drawing_id
+		contar_aciertos_repetidos(pn_drawing_id	=> pn_drawing_id - 1
 							    , pn_list_id    => k.list_id);
 	end loop;
 end aciertos_repetidos_handler; 	
@@ -893,7 +893,31 @@ procedure upd_predicciones_all(pn_drawing_id		number) is
            par1, par2, par3, par4, par5, par6,
            chng1, chng2, chng3, chng4, chng5, chng6,
 		   pref1, pref2, pref3, pref4, pref5, pref6,
-           pxc1, pxc2, pxc3, pxc4, pxc5, pxc6
+           pxc1, pxc2, pxc3, pxc4, pxc5, pxc6,
+		   case when pxc1 = 0 and pref1 = 0 then 0 
+           when pxc1 = 0 and pref1 = 1 then 1 
+           when pxc1 = 1 and pref1 = 0 then 2 
+           when pxc1 = 1 and pref1 = 1 then 3 end pxc_pref1,
+		   case when pxc2 = 0 and pref2 = 0 then 0 
+           when pxc2 = 0 and pref2 = 1 then 1 
+           when pxc2 = 1 and pref2 = 0 then 2 
+           when pxc2 = 1 and pref2 = 1 then 3 end pxc_pref2,
+		   case when pxc3 = 0 and pref3 = 0 then 0 
+           when pxc3 = 0 and pref3 = 1 then 1 
+           when pxc3 = 1 and pref3 = 0 then 2 
+           when pxc3 = 1 and pref3 = 1 then 3 end pxc_pref3,
+		   case when pxc4 = 0 and pref4 = 0 then 0 
+           when pxc4 = 0 and pref4 = 1 then 1 
+           when pxc4 = 1 and pref4 = 0 then 2 
+           when pxc4 = 1 and pref4 = 1 then 3 end pxc_pref4,
+		   case when pxc5 = 0 and pref5 = 0 then 0 
+           when pxc5 = 0 and pref5 = 1 then 1 
+           when pxc5 = 1 and pref5 = 0 then 2 
+           when pxc5 = 1 and pref5 = 1 then 3 end pxc_pref5,
+		   case when pxc6 = 0 and pref6 = 0 then 0 
+           when pxc6 = 0 and pref6 = 1 then 1 
+           when pxc6 = 1 and pref6 = 0 then 2 
+           when pxc6 = 1 and pref6 = 1 then 3 end pxc_pref6
 	  from resultados_tbl;
 begin 
 --DBMS_OUTPUT.PUT_LINE('-------------------------------');
@@ -921,7 +945,7 @@ begin
 			 , res5 = k.lt5
 			 , res6 = k.lt6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'LT';
+		   and instr(prediccion_tipo,'LT') > 0;
 
 		dbms_output.put_line('frecuencia');
 		dbms_output.put_line(k.fr1||' - '||k.fr2||' - '||k.fr3||' - '||k.fr4||' - '||k.fr5||' - '||k.fr6);		
@@ -934,7 +958,7 @@ begin
 			 , res5 = k.fr5
 			 , res6 = k.fr6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'FR';
+		   and instr(prediccion_tipo,'FR') > 0;
 		
 		dbms_output.put_line('numeros primos');
 		dbms_output.put_line(k.primo1||' - '||k.primo2||' - '||k.primo3||' - '||k.primo4||' - '||k.primo5||' - '||k.primo6);		
@@ -947,7 +971,7 @@ begin
 			 , res5 = k.primo5
 			 , res6 = k.primo6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'PRIMO';
+		   and instr(prediccion_tipo,'PRIMO') > 0;
 
 		dbms_output.put_line('numeros impares');
 		dbms_output.put_line(k.impar1||' - '||k.impar2||' - '||k.impar3||' - '||k.impar4||' - '||k.impar5||' - '||k.impar6);
@@ -960,7 +984,7 @@ begin
 			 , res5 = k.impar5
 			 , res6 = k.impar6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'IMPAR';			   
+		   and instr(prediccion_tipo,'IMPAR') > 0;			   
 
 		dbms_output.put_line('numeros pares');
 		dbms_output.put_line(k.par1||' - '||k.par2||' - '||k.par3||' - '||k.par4||' - '||k.par5||' - '||k.par6);
@@ -973,7 +997,7 @@ begin
 			 , res5 = k.par5
 			 , res6 = k.par6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'PAR';			   
+		   and instr(prediccion_tipo,'PAR') > 0;			   
 
 		dbms_output.put_line('numeros con cambio de posicion');
 		dbms_output.put_line(k.chng1||' - '||k.chng2||' - '||k.chng3||' - '||k.chng4||' - '||k.chng5||' - '||k.chng6);
@@ -986,7 +1010,7 @@ begin
 			 , res5 = k.chng5
 			 , res6 = k.chng6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'CHNG';	
+		   and instr(prediccion_tipo,'CHNG') > 0;	
 
 		dbms_output.put_line('digits');
 		dbms_output.put_line(k.comb1||' - '||k.comb2||' - '||k.comb3||' - '||k.comb4||' - '||k.comb5||' - '||k.comb6);
@@ -999,20 +1023,20 @@ begin
 			 , res5 = k.comb5
 			 , res6 = k.comb6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'DIGIT';	
+		   and instr(prediccion_tipo,'DIGIT') > 0;	
 
-		dbms_output.put_line('favorables');
-		dbms_output.put_line(k.pref1||' - '||k.pref2||' - '||k.pref3||' - '||k.pref4||' - '||k.pref5||' - '||k.pref6);
-		--digits
+		dbms_output.put_line('pxc junto con numeros favorables');
+		dbms_output.put_line(k.pxc_pref1||' - '||k.pxc_pref2||' - '||k.pxc_pref3||' - '||k.pxc_pref4||' - '||k.pxc_pref5||' - '||k.pxc_pref6);
+		--pxc junto con numeros favorables
 		update olap_sys.predicciones_all
-		   set res1 = k.pref1
-		     , res2 = k.pref2
-			 , res3 = k.pref3
-			 , res4 = k.pref4
-			 , res5 = k.pref5
-			 , res6 = k.pref6
+		   set res1 = k.pxc_pref1
+		     , res2 = k.pxc_pref2
+			 , res3 = k.pxc_pref3
+			 , res4 = k.pxc_pref4
+			 , res5 = k.pxc_pref5
+			 , res6 = k.pxc_pref6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'PREF';
+		   and instr(prediccion_tipo,'PXC_PREF') > 0;
 
 		dbms_output.put_line('PXC');
 		dbms_output.put_line(k.pxc1||' - '||k.pxc2||' - '||k.pxc3||' - '||k.pxc4||' - '||k.pxc5||' - '||k.pxc6);
@@ -1025,28 +1049,7 @@ begin
 			 , res5 = k.pxc5
 			 , res6 = k.pxc6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and prediccion_tipo = 'PXC';	
-		   
-		/*estos son los valores validos para esta actualizacion
-		cuando pxcN tiene valor se transforma en 1
-		cuando preN tiene valor se transforma en 2
-		pxcN	preN	posN
-		0		0		0
-		0		2		3
-		1		0		4
-		1		2		5
-		*/
-		/*
-		update olap_sys.predicciones_all
-		   set res1 = k.pre1
-		     , res2 = k.pre2
-			 , res3 = k.pre3
-			 , res4 = k.pre4
-			 , res5 = k.pre5
-			 , res6 = k.pre6
-		 where prediccion_sorteo = pn_drawing_id
-		   and prediccion_tipo = 'Preferente';
-		*/   
+		   and instr(prediccion_tipo,'PXC') > 0;	 
 	end loop;
 
     --actualizando las columnas match para las predicciones relacionadas a impar, par y primo
@@ -1058,8 +1061,10 @@ begin
 		 , match5 = case when pred5 = '0' and res5 = '0' then 0 when pred5 = res5 then 1 else 0 end
 		 , match6 = case when pred6 = '0' and res6 = '0' then 0 when pred6 = res6 then 1 else 0 end
 	 where prediccion_sorteo = ln$sorteo_anterior
-       and prediccion_tipo in ('IMPAR','PAR','PRIMO');
-
+       and (instr(prediccion_tipo,'IMPAR') > 0
+	    or  instr(prediccion_tipo,'PAR') > 0
+		or  instr(prediccion_tipo,'PRIMO') > 0);
+		
     --actualizando las columnas match para las predicciones relacionadas a CHNG
 	update olap_sys.predicciones_all
 	   set match1 = case when pred1 = res1 then 1 else 0 end
@@ -1069,7 +1074,10 @@ begin
 		 , match5 = case when pred5 = res5 then 1 else 0 end
 		 , match6 = case when pred6 = res6 then 1 else 0 end
 	 where prediccion_sorteo = ln$sorteo_anterior
-       and prediccion_tipo in ('CHNG','DIGIT');
+       and (instr(prediccion_tipo,'CHNG') > 0
+	    or  instr(prediccion_tipo,'DIGIT') > 0
+        or  instr(prediccion_tipo,'PXC_PREF') > 0
+        or  instr(prediccion_tipo,'PXC') > 0);
 	   
     --actualizando las columnas match para las predicciones relacionadas a LT y FR
 	update olap_sys.predicciones_all
@@ -1080,8 +1088,9 @@ begin
 		 , match5 = case when pred5 = '#' and res5 = '#' then 0 when pred5 = res5 then 1 else 0 end
 		 , match6 = case when pred6 = '#' and res6 = '#' then 0 when pred6 = res6 then 1 else 0 end
 	 where prediccion_sorteo = ln$sorteo_anterior
-       and prediccion_tipo in ('LT','FR');
-
+       and (instr(prediccion_tipo,'LT') > 0
+	    or  instr(prediccion_tipo,'FR') > 0);
+		
     --actualizando el contador de match
 	update olap_sys.predicciones_all
 	   set match_cnt = match1 + match2 + match3 + match4 + match5 + match6
@@ -1784,6 +1793,417 @@ exception
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 
 end predicciones_all_handler;								 
+
+--!insertar n registros en la tabla, los cuales seran actualizados en procesos posteriores
+procedure ins_digit_counts(pn_rec_intertados		number
+						 , pn_drawing_id			number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'ins_digit_counts'; 
+begin
+	for i in 1..pn_rec_intertados loop
+		insert into olap_sys.digit_counts (id, drawing_id) values ((select nvl(max(id),0) + 1 from olap_sys.digit_counts), pn_drawing_id);
+	end loop;
+	commit;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_digit_counts;
+
+
+--!actualizar registros en la tabla
+procedure upd_digit_data(pn_drawing_id			number
+					   , pn_column_num		    number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_digit_data'; 
+	ln$loop_index		          number := 1;
+	lv$upd_stmt				      varchar2(10000);	
+	lrc$ref_cursor          	  SYS_REFCURSOR;	
+	pn$comb 					  number := 0;	
+	pn$j_cnt 					  number := 0;
+	pn$r_cnt					  number := 0;
+	pn$r_probabilidad			  number := 0;
+	pn$r_last_id				  number := 0;
+	pn$r_diff					  number := 0;
+begin
+	--!inicializando index
+	olap_sys.w_common_pkg.g_index := 1;
+	
+	--!construir select statement
+	olap_sys.w_common_pkg.g_dml_stmt := 'with jugadas_tbl as (';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' select ia'||pn_column_num;
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , count(1) j_cnt';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.gl_automaticas_detail';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' group by ia'||pn_column_num||')';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , resultados_tbl as (';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' select comb'||pn_column_num;
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , max(gambling_id) r_last_id';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , count(1) r_cnt';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.pm_mr_resultados_v2';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' group by comb'||pn_column_num||')';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' select ia'||pn_column_num;
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , j_cnt';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , (select r_cnt from resultados_tbl where comb'||pn_column_num||'=ia'||pn_column_num||') r_cnt';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , round(((select r_cnt from resultados_tbl where comb'||pn_column_num||'=ia'||pn_column_num||')/j_cnt)*100,2) r_prob';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , (select r_last_id from resultados_tbl where comb'||pn_column_num||'=ia'||pn_column_num||') r_last_id';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' , '||pn_drawing_id||' - (select r_last_id from resultados_tbl where comb'||pn_column_num||'=ia'||pn_column_num||') r_diff';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||'   from jugadas_tbl';   
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' order by j_cnt desc';
+
+
+
+
+   open lrc$ref_cursor for olap_sys.w_common_pkg.g_dml_stmt;
+   loop
+		fetch lrc$ref_cursor into pn$comb, pn$j_cnt, pn$r_cnt, pn$r_probabilidad, pn$r_last_id, pn$r_diff;
+		exit when lrc$ref_cursor%notfound;	
+		
+		--!construir update statement
+		lv$upd_stmt := 'update olap_sys.digit_counts';
+		lv$upd_stmt := 	lv$upd_stmt || ' set comb'||pn_column_num||' = '||pn$comb;
+		lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_j_cnt = '||pn$j_cnt;
+		lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_r_cnt = '||pn$r_cnt;
+		lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_r_prob = '||pn$r_probabilidad;
+		lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_r_last_id = '||pn$r_last_id;
+		lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_r_diff = '||pn$r_diff;
+		lv$upd_stmt := 	lv$upd_stmt || ' where id = '||olap_sys.w_common_pkg.g_index; 	
+		--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => lv$upd_stmt);
+		
+		--!ejecutar el update
+		execute immediate lv$upd_stmt;
+		
+		--!incrementar el index
+		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+   end loop;
+   close lrc$ref_cursor;
+   commit;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_digit_data;
+
+
+--!actualizar secuencias y topn en la tabla
+procedure upd_digit_counts(pn_topn					number
+                         , pn_column_num		    number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_digit_counts'; 
+	ln$loop_index		          number := 1;
+	lv$upd_stmt				      varchar2(10000);	
+	lrc$ref_cursor          	  SYS_REFCURSOR;	
+	pn$comb 					  number := 0;	
+	pn$j_cnt 					  number := 0;
+	pn$r_cnt					  number := 0;
+begin
+	--!JUGADAS
+	--!inicializando index
+	olap_sys.w_common_pkg.g_index := 1;
+	
+	--!construir select statement
+	olap_sys.w_common_pkg.g_dml_stmt := 'select comb'||pn_column_num||'_j_cnt';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.digit_counts';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where comb'||pn_column_num||'_j_cnt > 0';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' order by 1 desc';
+
+	--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt);
+
+
+   open lrc$ref_cursor for olap_sys.w_common_pkg.g_dml_stmt;
+   loop
+		fetch lrc$ref_cursor into pn$j_cnt;
+		exit when lrc$ref_cursor%notfound;	
+		
+		--!construir update statement
+		lv$upd_stmt := 'update olap_sys.digit_counts';
+		lv$upd_stmt := 	lv$upd_stmt || ' set comb'||pn_column_num||'_seq_j_cnt = '||olap_sys.w_common_pkg.g_index;
+		if olap_sys.w_common_pkg.g_index <= pn_topn then
+			lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_topn_seq_j_cnt = '||chr(39)||'Y'||chr(39);
+		end if;
+		lv$upd_stmt := 	lv$upd_stmt || ' where comb'||pn_column_num||'_j_cnt = '||pn$j_cnt; 	
+		--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => lv$upd_stmt);
+		
+		--!ejecutar el update
+		execute immediate lv$upd_stmt;
+		
+		--!incrementar el index
+		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+   end loop;
+   close lrc$ref_cursor;
+
+	--!RESULTADOS
+	--!inicializando index
+	olap_sys.w_common_pkg.g_index := 1;
+	
+	--!construir select statement
+	olap_sys.w_common_pkg.g_dml_stmt := 'select comb'||pn_column_num||'_r_cnt';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.digit_counts';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where comb'||pn_column_num||'_r_cnt > 0';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' order by 1 desc';
+
+	--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt);
+
+
+   open lrc$ref_cursor for olap_sys.w_common_pkg.g_dml_stmt;
+   loop
+		fetch lrc$ref_cursor into pn$r_cnt;
+		exit when lrc$ref_cursor%notfound;	
+		
+		--!construir update statement
+		lv$upd_stmt := 'update olap_sys.digit_counts';
+		lv$upd_stmt := 	lv$upd_stmt || ' set comb'||pn_column_num||'_seq_r_cnt = '||olap_sys.w_common_pkg.g_index;
+		if olap_sys.w_common_pkg.g_index <= pn_topn then
+			lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_topn_seq_r_cnt = '||chr(39)||'Y'||chr(39);
+		end if;
+		lv$upd_stmt := 	lv$upd_stmt || ' where comb'||pn_column_num||'_r_cnt = '||pn$r_cnt;	
+		--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => lv$upd_stmt);
+		
+		--!ejecutar el update
+		execute immediate lv$upd_stmt;
+		
+		--!incrementar el index
+		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+   end loop;
+   close lrc$ref_cursor;
+
+	--!PROBABILIDAD
+	--!inicializando index
+	olap_sys.w_common_pkg.g_index := 1;
+	
+	--!construir select statement para diferencias
+	olap_sys.w_common_pkg.g_dml_stmt := 'select comb'||pn_column_num||'_r_prob';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.digit_counts';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where comb'||pn_column_num||'_r_prob > 0';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' order by comb'||pn_column_num||'_r_prob, comb'||pn_column_num||'_r_cnt desc';
+
+	--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt);
+
+
+   open lrc$ref_cursor for olap_sys.w_common_pkg.g_dml_stmt;
+   loop
+		fetch lrc$ref_cursor into pn$r_cnt;
+		exit when lrc$ref_cursor%notfound;	
+		
+		--!construir update statement
+		lv$upd_stmt := 'update olap_sys.digit_counts';
+		lv$upd_stmt := 	lv$upd_stmt || ' set comb'||pn_column_num||'_seq_r_prob = '||olap_sys.w_common_pkg.g_index;
+		if olap_sys.w_common_pkg.g_index <= pn_topn then
+			lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_topn_seq_r_prob = '||chr(39)||'Y'||chr(39);
+		end if;
+		lv$upd_stmt := 	lv$upd_stmt || ' where comb'||pn_column_num||'_r_prob = '||pn$r_cnt;	
+		--olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => lv$upd_stmt);
+		
+		--!ejecutar el update
+		execute immediate lv$upd_stmt;
+		
+		--!incrementar el index
+		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+   end loop;
+   close lrc$ref_cursor;
+
+	--!DIFERENCIA GAMBLING_ID - LAST_DRAWING_ID
+	--!inicializando index
+	olap_sys.w_common_pkg.g_index := 1;
+	
+	--!construir select statement para diferencias
+	olap_sys.w_common_pkg.g_dml_stmt := 'select comb'||pn_column_num||'_r_diff';
+	olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' from olap_sys.digit_counts';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' where comb'||pn_column_num||'_r_diff > 0';
+    olap_sys.w_common_pkg.g_dml_stmt := olap_sys.w_common_pkg.g_dml_stmt ||' order by comb'||pn_column_num||'_r_diff, comb'||pn_column_num||'_r_cnt';
+
+	olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => olap_sys.w_common_pkg.g_dml_stmt);
+
+
+   open lrc$ref_cursor for olap_sys.w_common_pkg.g_dml_stmt;
+   loop
+		fetch lrc$ref_cursor into pn$r_cnt;
+		exit when lrc$ref_cursor%notfound;	
+		
+		--!construir update statement
+		lv$upd_stmt := 'update olap_sys.digit_counts';
+		lv$upd_stmt := 	lv$upd_stmt || ' set comb'||pn_column_num||'_seq_r_diff = '||olap_sys.w_common_pkg.g_index;
+		if olap_sys.w_common_pkg.g_index <= pn_topn then
+			lv$upd_stmt := 	lv$upd_stmt || ', comb'||pn_column_num||'_topn_r_diff = '||chr(39)||'Y'||chr(39);
+		end if;
+		lv$upd_stmt := 	lv$upd_stmt || ' where comb'||pn_column_num||'_r_diff = '||pn$r_cnt;	
+		olap_sys.w_new_pick_panorama_pkg.ins_tmp_testing (pv_valor => lv$upd_stmt);
+		
+		--!ejecutar el update
+		execute immediate lv$upd_stmt;
+		
+		--!incrementar el index
+		olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+   end loop;
+   close lrc$ref_cursor;
+   
+   commit;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_digit_counts;
+
+--!insertar conteo de los digitos acerca de jugadas y resultados
+procedure digit_counts_handler(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'digit_counts_handler'; 
+	CN$REC_INSERTED		 CONSTANT NUMBER := 30;
+	CN$TOPN				 CONSTANT NUMBER := 10;
+begin
+	--!limpiar el contenido de la tabla	
+	delete olap_sys.digit_counts;
+	
+	--!insertar n registros en la tabla, los cuales seran actualizados en procesos posteriores
+	ins_digit_counts(pn_rec_intertados => CN$REC_INSERTED
+				   , pn_drawing_id => pn_drawing_id);
+				   
+	--!actualizar registros en la tabla
+	for i in 1..6 loop
+		--!actualizar registros en la tabla
+		upd_digit_data(pn_drawing_id => pn_drawing_id
+					   , pn_column_num => i);
+					   
+		--!actualizar secuencias y topn en la tabla
+		upd_digit_counts(pn_topn => CN$TOPN
+                       , pn_column_num => i);
+	end loop;			   
+						 
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end digit_counts_handler;
+
+--!mostrar las predicciones para cada b_type para el ultimo sorteo
+procedure comparativo_lt_handler is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'comparativo_lt_handler'; 
+	CN$HISTORY		 	 CONSTANT NUMBER := 100;
+
+	cursor c_primary (pn_history	number) is
+	with resultado_tbl as (
+	select max(gambling_id) max_id from olap_sys.sl_gamblings
+	)
+	, lt_history_tbl as (
+	select *
+	  from olap_sys.ley_tercio_history_dtl
+	 where winner_flag is not null
+	   and next_drawing_id >= (select max_id - pn_history from resultado_tbl)
+	) 
+	, lt_history_cnt_tbl as (
+	select b_type
+		 , lt
+		 , lt_cnt_rank rank_cnt 
+		 , count(1) cnt
+	  from olap_sys.ley_tercio_history_dtl
+	 where winner_flag is not null
+	group by b_type
+		 , lt
+		 , lt_cnt_rank
+	)
+	, output_tbl as (
+	select b_type
+		 , lt
+		 , rank_cnt
+		 , cnt
+		 , (select min(next_drawing_id) from lt_history_tbl) min_id
+		 , (select max(next_drawing_id) from lt_history_tbl) max_id
+		 ,  pn_history history_cnt 
+	  from lt_history_cnt_tbl
+	) 
+	, output_sum_tbl as (
+	select b_type b_typex
+		 , rank_cnt rank_cntx
+		 , sum(cnt) sum_cnt
+	  from output_tbl
+	 group by b_type
+		 , rank_cnt 
+	)
+	, output_rank_tbl as (
+	select DISTINCT b_type
+		 , rank_cnt
+		 , round(((select sum_cnt from output_sum_tbl where b_typex=b_type and rank_cntx=rank_cnt)/(select sum(sum_cnt) from output_sum_tbl where b_typex=b_type))*100) pct_cnt
+	  from output_tbl   
+	)
+	, output_final_tbl as (
+	select b_type
+		 , rank_cnt
+		 , pct_cnt
+		 , dense_rank() over (partition by b_type order by pct_cnt) as b_type_rank
+	  from output_rank_tbl
+	)
+	select (select max_id from resultado_tbl) id
+		 , b_type
+		 , rank_cnt
+		 , pct_cnt
+		 , b_type_rank
+	  from output_final_tbl
+	 where b_type_rank > 1 
+	 order by b_type
+		 , pct_cnt desc;
+
+	cursor c_secondary (pv_b_type		varchar2
+					  , pn_rank_cnt		number) is
+	with resultado_tbl as (
+	select max(gambling_id) max_id from olap_sys.sl_gamblings
+	)
+	, rank_tbl as (
+	select h.drawing_id drawing_idx
+		 , d.b_type b_typex
+		 , d.id idx
+		 , d.lt ltx
+		 , d.lt_cnt
+		 , dense_rank() over (partition by d.drawing_id, d.b_type order by d.lt_cnt, d.id) as rank_cnt
+	  from olap_sys.ley_tercio_history_header h
+		 , olap_sys.ley_tercio_history_dtl d
+	 where h.drawing_id = d.drawing_id
+	   and d.drawing_id = (select max_id from resultado_tbl)
+	   and d.lt in ('R','G','B')
+	)
+	, rank_all_tbl as (
+	select h.drawing_id drawing_idx
+		 , d.b_type b_typex
+		 , d.id idx
+		 , d.lt ltx
+		 , d.lt_cnt
+		 , dense_rank() over (partition by d.drawing_id, d.b_type order by d.lt_cnt, d.id) as rank_cnt
+	  from olap_sys.ley_tercio_history_header h
+		 , olap_sys.ley_tercio_history_dtl d
+	 where  h.drawing_id = d.drawing_id
+	   and d.drawing_id between (select max_id - 5 from resultado_tbl) and (select max_id - 1 from resultado_tbl) 
+	   and d.lt in ('R','G','B')
+	) 
+	, output_final_tbl as (
+	select d.drawing_id
+		 , d.b_type
+		 , d.lt
+		 , d.lt_cnt
+		 , nvl((select rank_cnt from rank_tbl where drawing_idx=h.drawing_id and b_typex=d.b_type and idx=d.id and ltx=d.lt),0) rank_cnt
+	  from olap_sys.ley_tercio_history_header h
+		 , olap_sys.ley_tercio_history_dtl d
+	 where h.drawing_id = d.drawing_id
+	   and d.drawing_id = (select max_id from resultado_tbl)
+	)
+	select drawing_id
+		 , b_type
+		 , lt
+	  from output_final_tbl
+	 where rank_cnt = pn_rank_cnt
+	   and b_type = pv_b_type;
+begin
+	olap_sys.w_common_pkg.g_index := 1;
+	for p in c_primary (pn_history => CN$HISTORY) loop
+		--dbms_output.put_line('p: '||p.id||' - '||p.b_type||' - '||p.rank_cnt||' - '||p.b_type_rank||' - '||p.pct_cnt);
+		for s in c_secondary (pv_b_type => p.b_type
+		                    , pn_rank_cnt => p.rank_cnt) loop
+			dbms_output.put_line(s.drawing_id||' - '||s.b_type||' - '||s.lt||' - P'||olap_sys.w_common_pkg.g_index);					
+		end loop;
+		if olap_sys.w_common_pkg.g_index < 2 then
+			olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
+		else
+			olap_sys.w_common_pkg.g_index := 1;
+		end if;		
+	end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end comparativo_lt_handler;
 
 end w_gl_automaticas_pkg;
 /

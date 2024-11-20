@@ -93,6 +93,7 @@ def create_gl_dataframe (sorteo_id:int, sorteo_base:int=0):
 			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 1 THEN 1 ELSE 0 END IMPAR"
 			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 0 THEN 1 ELSE 0 END PAR"
 			query_stmt = query_stmt + " , CASE WHEN CHNG_POSICION IS NULL THEN 0 ELSE 1 END CHNG"
+			query_stmt = query_stmt + " , OLAP_SYS.W_COMMON_PKG.GET_DIGITO_TO_NUMERO(DIGIT) DECENA"
 			if sorteo_base > 0:
 				query_stmt = query_stmt + " , CASE WHEN PREFERENCIA_FLAG IS NULL THEN 0 ELSE 1 END PREF"
 			query_stmt = query_stmt + " FROM OLAP_SYS.S_CALCULO_STATS"
@@ -105,22 +106,22 @@ def create_gl_dataframe (sorteo_id:int, sorteo_base:int=0):
 				query_stmt = query_stmt + " AND DRAWING_ID >= " + str(sorteo_base)
 			query_stmt = query_stmt + " ORDER BY DRAWING_ID, B_TYPE)"
 			if sorteo_base > 0:
-				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG"
+				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG, DECENA"
 				query_stmt = query_stmt + " , CASE WHEN PXC = 0 AND PREF = 0 THEN 0"
 				query_stmt = query_stmt + " WHEN PXC = 0 AND PREF = 1 THEN 1"
 				query_stmt = query_stmt + " WHEN PXC = 1 AND PREF = 0 THEN 2"
 				query_stmt = query_stmt + " WHEN PXC = 1 AND PREF = 1 THEN 3 END PXC_PREF"
 			else:
-				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG"
+				query_stmt = query_stmt + " SELECT ID, B_TYPE, DIGIT, LT, FR, CA, PXC, PRIMO, IMPAR, PAR, CHNG, DECENA"
 			query_stmt = query_stmt + " FROM GIGA_TBL"
 
 			cursor = conn.cursor()
 			cursor.execute(query_stmt)
 			# Convirtiendo el resultset en un DataFrame de Pandas
 			if sorteo_base > 0:
-				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','PXC_PREF']  # Nombres de columnas
+				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','DECENA','PXC_PREF']  # Nombres de columnas
 			else:
-				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO','IMPAR','PAR','CHNG']  # Nombres de columnas
+				columns = ['ID', 'B_TYPE', 'DIGIT', 'LT', 'FR', 'CA', 'PXC', 'PRIMO','IMPAR','PAR','CHNG','DECENA']  # Nombres de columnas
 			df = pd.DataFrame(cursor.fetchall(), columns=columns)
 			#print(df.head(10))
 			return df
@@ -140,7 +141,7 @@ def prediccion_lt(df, label, sorteo_id, posicion, prediccion_dic, nombre_algorit
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -235,7 +236,7 @@ def prediccion_lt_2(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Define feature columns
-		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
 		# Separate features and label
 		X = df[feature_columns]  # Features
@@ -341,7 +342,7 @@ def prediccion_lt_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Define feature columns
-		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+		feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
 		# Separate features and label
 		X = df[feature_columns]  # Features
@@ -443,7 +444,7 @@ def prediccion_lt_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
         siguiente_sorteo = df['ID'].max() + 1
 
         # Define feature columns
-        feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+        feature_columns = ['FR', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
         # Separate features and label
         X = df[feature_columns]  # Features
@@ -580,7 +581,7 @@ def prediccion_fr(df, label, sorteo_id, posicion, prediccion_dic, nombre_algorit
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (FR)
-		feature_columns = ['CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'IMPAR']
+		feature_columns = ['CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'IMPAR','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -675,7 +676,7 @@ def prediccion_fr_2(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Define feature columns
-		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
 		# Separate features and label
 		X = df[feature_columns]  # Features
@@ -781,7 +782,7 @@ def prediccion_fr_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Define feature columns
-		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
 		# Separate features and label
 		X = df[feature_columns]  # Features
@@ -883,7 +884,7 @@ def prediccion_fr_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Define feature columns
-		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT']
+		feature_columns = ['LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG', 'B_TYPE', 'DIGIT','DECENA']
 
 		# Separate features and label
 		X = df[feature_columns]  # Features
@@ -1020,7 +1021,7 @@ def prediccion_primo(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -1116,7 +1117,7 @@ def prediccion_primo_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values 0 or 1)
 
@@ -1205,7 +1206,7 @@ def prediccion_primo_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns].values  # Features
 		y = df[label].values  # Label (expected values 0 or 1)
 
@@ -1327,7 +1328,7 @@ def prediccion_impar(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -1423,7 +1424,7 @@ def prediccion_impar_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values 0 or 1)
 
@@ -1513,7 +1514,7 @@ def prediccion_impar_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns].values  # Features
 		y = df[label].values  # Label (expected values 0 or 1)
 
@@ -1635,7 +1636,7 @@ def prediccion_par(df, label, sorteo_id, posicion, prediccion_dic, nombre_algori
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -1731,7 +1732,7 @@ def prediccion_par_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_alg
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values 0 or 1)
 
@@ -1821,7 +1822,7 @@ def prediccion_par_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'CHNG','DECENA']
 		X = df[feature_columns].values  # Features
 		y = df[label].values  # Label (expected values 0 or 1)
 
@@ -1943,7 +1944,7 @@ def prediccion_change(df, label, sorteo_id, posicion, prediccion_dic, nombre_alg
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -2039,7 +2040,7 @@ def prediccion_change_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values 0 or 1)
 
@@ -2129,7 +2130,7 @@ def prediccion_change_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','DECENA']
 		X = df[feature_columns].values  # Features
 		y = df[label].values  # Label (expected values 0 or 1)
 
@@ -2251,7 +2252,7 @@ def prediccion_digit(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -2347,7 +2348,7 @@ def prediccion_digit_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values range from 1 to 39)
 
@@ -2443,7 +2444,7 @@ def prediccion_digit_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values range from 1 to 39)
 
@@ -2584,7 +2585,7 @@ def prediccion_pxc(df, label, sorteo_id, posicion, prediccion_dic, nombre_algori
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG', 'IMPAR']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'PAR', 'CHNG', 'IMPAR','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -2682,7 +2683,7 @@ def prediccion_pxc_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separar los features y el label (LT)
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
 
@@ -2778,12 +2779,12 @@ def prediccion_pxc_pref_tf(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		siguiente_sorteo = df['ID'].max() + 1
 
 		# 1. Separate features and label
-		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label (expected values 0, 1, 2, or 3)
 
 		# Preprocessing pipeline: scale numeric features
-		numeric_features = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		numeric_features = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
 		preprocessor = ColumnTransformer(
 			transformers=[('num', StandardScaler(), numeric_features)]
 		)
@@ -2871,7 +2872,7 @@ def prediccion_pxc_pref_torch(df, label, sorteo_id, posicion, prediccion_dic, no
         siguiente_sorteo = df['ID'].max() + 1
 
         # Separate features and label
-        feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+        feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG','DECENA']
         X = df[feature_columns].values  # Features
         y = df[label].values  # Label (expected values 0, 1, 2, or 3)
 
@@ -2979,6 +2980,322 @@ def prediccion_pxc_pref_torch(df, label, sorteo_id, posicion, prediccion_dic, no
     except Exception as e:
         print(f"Error in prediccion_lt: {e}")
         return None
+
+
+#prediccion de decenas
+def prediccion_decena(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# print(f"entrena_modelos {label}, {features}")
+		#print(df.count())
+		#siguiente_sorteo = sorteo_id
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separar los features y el label decena
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR','CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Dividir los datos en conjuntos de entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		if nombre_algoritmo == "log_reg":
+			# Inicializar y entrenar Logistic Regression
+			log_reg = LogisticRegression(max_iter=300, random_state=42)
+			log_reg.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			log_reg_pred = log_reg.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, log_reg_pred)
+
+			#print("Precisión de Logistic Regression:", log_reg_accuracy)
+			#print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = log_reg.predict(nuevo_registro)
+		elif nombre_algoritmo == "rf":
+			# Inicializar y entrenar Random Forest Classifier
+			rf_clf = RandomForestClassifier(random_state=42)
+			rf_clf.fit(X_train, y_train)
+
+			# Realizar predicciones en el conjunto de prueba
+			rf_clf_pred = rf_clf.predict(X_test)
+
+			# Calcular la precisión de cada modelo
+			precision_score = accuracy_score(y_test, rf_clf_pred)
+
+			# print("Precisión de Logistic Regression:", log_reg_accuracy)
+			# print("Precisión de Random Forest:", rf_clf_accuracy)
+
+			# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+
+			# Realizar predicciones con los modelos entrenados
+			valor_prediccion = rf_clf.predict(nuevo_registro)
+
+
+		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print("Predicción de Logistic Regression:", prediccion_log_reg)
+		#print("Predicción de Random Forest:", prediccion_rf)
+
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = "10." + label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#prediccion de decenas en base a tensorflow
+def prediccion_decena_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+	try:
+		# Determine the next draw number
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# 1. Separate features and label
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label (expected values 0, 1, 2, or 3)
+
+		# Preprocessing pipeline: scale numeric features
+		numeric_features = feature_columns
+		preprocessor = ColumnTransformer(
+			transformers=[('num', StandardScaler(), numeric_features)]
+		)
+
+		# Split data into training and test sets
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		# Apply preprocessing
+		X_train = preprocessor.fit_transform(X_train)
+		X_test = preprocessor.transform(X_test)
+
+		# Subtract 1 from target labels so they start at 0 (for TensorFlow compatibility)
+		y_train -= 1
+		y_test -= 1
+
+		# Build a neural network model using TensorFlow/Keras for multi-class classification
+		model = tf.keras.Sequential([
+			tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
+			tf.keras.layers.Dense(64, activation='relu'),
+			tf.keras.layers.Dense(32, activation='relu'),
+			tf.keras.layers.Dense(4, activation='softmax')
+			# Softmax for multi-class classification (4 classes: 0,1,2,3)
+		])
+
+		# Compile the model
+		model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+		# Train the model
+		model.fit(X_train, y_train, epochs=EPOCHS, batch_size=32, validation_split=0.1, verbose=1)
+
+		# Predict on test set to evaluate the model
+		y_pred_prob = model.predict(X_test)
+		y_pred = y_pred_prob.argmax(axis=1)  # Get class with highest probability for each prediction
+
+		# Calculate accuracy
+		precision_score = accuracy_score(y_test, y_pred)
+		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+
+		# Single prediction for the latest record in the dataset (similar to what was done in the original function)
+		nuevo_registro = X_test[-1:]  # Assuming you want to predict for the last instance in the test set
+		valor_prediccion_prob = model.predict(nuevo_registro)
+		valor_prediccion = valor_prediccion_prob.argmax(axis=1)[0] + 1 # Add 1 to match original class range (1 to 4)
+
+		# Print or return the single prediction
+		print(f"Predicción para el registro más reciente: {valor_prediccion}")
+
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+
+		# Update prediction dictionary
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = "10." + label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion)
+			prediccion_dic['precision_1'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion)
+			prediccion_dic['precision_2'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion)
+			prediccion_dic['precision_3'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion)
+			prediccion_dic['precision_4'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion)
+			prediccion_dic['precision_5'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion)
+			prediccion_dic['precision_6'] = round(precision_score,3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		return prediccion_dic
+
+	except Exception as e:
+		print(f"Error in prediccion_lt: {e}")
+	return None
+
+
+#prediccion de decenas en base a torch
+def prediccion_decena_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, epochs=EPOCHS):
+	try:
+		# Determine the next draw number
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# Separate features and label
+		feature_columns = ['FR', 'LT', 'CA', 'PXC', 'PRIMO', 'IMPAR', 'PAR', 'CHNG']
+		X = df[feature_columns].values  # Features
+		y = df[label].values  # Label (expected values 1, 2, 3 or 4)
+
+		# Adjust labels to range [0, 3] for CrossEntropyLoss compatibility
+		y = y - 1
+
+		# Preprocessing: scale numeric features
+		scaler = StandardScaler()
+		X = scaler.fit_transform(X)
+
+		# Split data into training and test sets
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		# Convert data to PyTorch tensors
+		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+
+		# Create DataLoader for training data
+		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+		train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+		# Define the neural network model
+		class NeuralNet(nn.Module):
+			def __init__(self, input_dim, output_dim):
+				super(NeuralNet, self).__init__()
+				self.fc1 = nn.Linear(input_dim, 64)
+				self.fc2 = nn.Linear(64, 32)
+				self.fc3 = nn.Linear(32, output_dim)
+
+			def forward(self, x):
+				x = torch.relu(self.fc1(x))
+				x = torch.relu(self.fc2(x))
+				return torch.softmax(self.fc3(x), dim=1)
+
+		model = NeuralNet(X_train.shape[1], 4)  # 4 output classes (1, 2, 3, 4)
+
+		# Loss and optimizer
+		criterion = nn.CrossEntropyLoss()
+		optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+		# Training loop
+		model.train()
+		for epoch in range(epochs):
+			for batch_X, batch_y in train_loader:
+				# Forward pass
+				outputs = model(batch_X)
+				loss = criterion(outputs, batch_y)
+
+				# Backward pass and optimization
+				optimizer.zero_grad()
+				loss.backward()
+				optimizer.step()
+
+			print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+
+		# Evaluate the model on the test set
+		model.eval()
+		with torch.no_grad():
+			y_pred_prob = model(X_test_tensor)
+			y_pred = torch.argmax(y_pred_prob, dim=1).numpy()
+
+		# Calculate accuracy
+		precision_score = accuracy_score(y_test, y_pred)
+		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+
+		# Single prediction for the latest record in the dataset
+		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
+		with torch.no_grad():
+			valor_prediccion_prob = model(nuevo_registro)
+			valor_prediccion = torch.argmax(valor_prediccion_prob, dim=1).item() + 1 # Adjust back to original range [1, 4]
+
+		# Update prediction dictionary
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = "10." + label
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion)
+			prediccion_dic['precision_1'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion)
+			prediccion_dic['precision_2'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion)
+			prediccion_dic['precision_3'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion)
+			prediccion_dic['precision_4'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion)
+			prediccion_dic['precision_5'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion)
+			prediccion_dic['precision_6'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+
+		# Print or return the single prediction
+		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		return prediccion_dic
+
+	except Exception as e:
+		print(f"Error in prediccion_lt: {e}")
+		return None
+
 
 # Chequear y visualizar NaNs en el DataFrame
 def check_nans(df) -> int:
@@ -3097,8 +3414,10 @@ def procesa_predicciones(df, nombre_algoritmo:str, label:str, id_base:int):
 			prediccion_digit(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 		elif label == 'PXC_PREF':
 			prediccion_pxc_pref(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
-		elif label == 'PXC':
-			prediccion_pxc(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		#elif label == 'PXC':
+		#	prediccion_pxc(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'DECENA':
+			prediccion_decena(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 
 		#ya que estan completas las predicciones de la jugada se imprimen
 		if b_type_id == 6:
@@ -3214,6 +3533,8 @@ def procesa_predicciones_tf(df, nombre_algoritmo:str, label:str, id_base:int):
 			prediccion_par_tf(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 		elif label == 'CHNG':
 			prediccion_change_tf(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'DECENA':
+			prediccion_decena_tf(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 
 		#ya que estan completas las predicciones de la jugada se imprimen
 		if b_type_id == 6:
@@ -3278,6 +3599,8 @@ def procesa_predicciones_torch(df, nombre_algoritmo:str, label:str, id_base:int)
 			prediccion_par_torch(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 		elif label == 'CHNG':
 			prediccion_change_torch(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
+		elif label == 'DECENA':
+			prediccion_decena_torch(df_b_type, label, id_base, b_type_id, prediccion_gl, nombre_algoritmo)
 
 		#ya que estan completas las predicciones de la jugada se imprimen
 		if b_type_id == 6:
@@ -3363,8 +3686,20 @@ def procesa_subtarea(id_base, df):
 	nombre_algoritmo = "rf"
 	procesa_predicciones(df, nombre_algoritmo, label, id_base)
 
+	"""
 	#pronostico por ciclo
 	label = 'PXC'
+	print("-------------------------------------")
+	nombre_algoritmo = "log_reg"
+	procesa_predicciones(df, nombre_algoritmo, label, id_base)
+
+	print("-------------------------------------")
+	nombre_algoritmo = "rf"
+	procesa_predicciones(df, nombre_algoritmo, label, id_base)
+	"""
+
+	#decenas
+	label = 'DECENA'
 	print("-------------------------------------")
 	nombre_algoritmo = "log_reg"
 	procesa_predicciones(df, nombre_algoritmo, label, id_base)
@@ -3408,64 +3743,69 @@ def procesa_tarea_sorteo_base(id_base):
 
 # proceso encargado de ejecutar los modelos de prediccion basados en neural networks
 def procesa_subtarea_nn(id_base, df):
-
-
 	#ley del tercio
 	label = "LT"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#frequencia
 	label = "FR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#digitos
 	label = "DIGIT"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#primos
 	label = "PRIMO"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#impares
 	label = "IMPAR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#pares
 	label = "PAR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#numeros con cambios
 	label = "CHNG"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	nombre_algoritmo = "torch"
-	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
+	#decenas
+	label = "DECENA"
+	print("-------------------------------------")
+	nombre_algoritmo = "tensorflow"
+	#procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
+	#nombre_algoritmo = "torch"
+	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 
 #proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
