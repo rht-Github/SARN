@@ -575,7 +575,7 @@ procedure contar_aciertos_repetidos(pn_drawing_id		number
 	) select regexp_substr((select str from resultado_tbl),'[^,]+',1,level) digit, (select id from resultado_tbl) id
 					   from dual 
 					 connect by level <= length((select str from resultado_tbl))-length(replace((select str from resultado_tbl),',',''))+1;	
-	
+					 
 	--!cursor para contar jugadas con aciertos	
 	cursor c_aciertos (pn_list_id		number) is
 	select ad.gambling_type, ad.list_id, ad.id, ad.aciertos_cnt
@@ -749,7 +749,7 @@ begin
 
 			dbms_output.put_line(sql%rowcount||' repetidos - B6');	
 		end loop;
-		
+	
         --!actualiando el header con jugadas con 4 aciertos
         for a in c_4_aciertos loop
             update olap_sys.gl_automaticas_header
@@ -790,7 +790,7 @@ procedure aciertos_repetidos_handler(pn_drawing_id		number) is
 begin
 	for k in c_automaticas_header loop
 		--!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
-		contar_aciertos_repetidos(pn_drawing_id	=> pn_drawing_id - 1
+		contar_aciertos_repetidos(pn_drawing_id	=> pn_drawing_id
 							    , pn_list_id    => k.list_id);
 	end loop;
 end aciertos_repetidos_handler; 	
@@ -881,7 +881,9 @@ procedure upd_predicciones_all(pn_drawing_id		number) is
          , case when pxc3 is null then 0 else 1 end pxc3
          , case when pxc4 is null then 0 else 1 end pxc4
          , case when pxc5 is null then 0 else 1 end pxc5
-         , case when pxc6 is null then 0 else 1 end pxc6		 
+         , case when pxc6 is null then 0 else 1 end pxc6
+         , d1,d2,d3,d4,d5,d6
+		 , pn_cnt, none_cnt, par_cnt	
 	  from olap_sys.pm_mr_resultados_v2
 	 where gambling_id = pn_drawing_id
 	)
@@ -917,7 +919,9 @@ procedure upd_predicciones_all(pn_drawing_id		number) is
 		   case when pxc6 = 0 and pref6 = 0 then 0 
            when pxc6 = 0 and pref6 = 1 then 1 
            when pxc6 = 1 and pref6 = 0 then 2 
-           when pxc6 = 1 and pref6 = 1 then 3 end pxc_pref6
+           when pxc6 = 1 and pref6 = 1 then 3 end pxc_pref6,
+		   d1,d2,d3,d4,d5,d6,
+		   pn_cnt, none_cnt, par_cnt
 	  from resultados_tbl;
 begin 
 --DBMS_OUTPUT.PUT_LINE('-------------------------------');
@@ -1040,7 +1044,7 @@ begin
 
 		dbms_output.put_line('PXC');
 		dbms_output.put_line(k.pxc1||' - '||k.pxc2||' - '||k.pxc3||' - '||k.pxc4||' - '||k.pxc5||' - '||k.pxc6);
-		--digits
+		--pronostico por ciclo
 		update olap_sys.predicciones_all
 		   set res1 = k.pxc1
 		     , res2 = k.pxc2
@@ -1049,7 +1053,30 @@ begin
 			 , res5 = k.pxc5
 			 , res6 = k.pxc6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'PXC') > 0;	 
+		   and instr(prediccion_tipo,'PXC') > 0;
+
+		dbms_output.put_line('DECENA');
+		dbms_output.put_line(k.d1||' - '||k.d2||' - '||k.d3||' - '||k.d4||' - '||k.d5||' - '||k.d6);
+		--decena
+		update olap_sys.predicciones_all
+		   set res1 = k.d1
+		     , res2 = k.d2
+			 , res3 = k.d3
+			 , res4 = k.d4
+			 , res5 = k.d5
+			 , res6 = k.d6
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and instr(prediccion_tipo,'DECENA') > 0;	
+
+		dbms_output.put_line('DECENA');
+		dbms_output.put_line(k.pn_cnt||' - '||k.none_cnt||' - '||k.par_cnt);
+		--primos, impar, par
+		update olap_sys.predicciones_all
+		   set res1 = k.pn_cnt
+		     , res2 = k.none_cnt
+			 , res3 = k.par_cnt
+		 where prediccion_sorteo = ln$sorteo_anterior
+		   and instr(prediccion_tipo,'PIP') > 0;			   
 	end loop;
 
     --actualizando las columnas match para las predicciones relacionadas a impar, par y primo
@@ -1065,7 +1092,7 @@ begin
 	    or  instr(prediccion_tipo,'PAR') > 0
 		or  instr(prediccion_tipo,'PRIMO') > 0);
 		
-    --actualizando las columnas match para las predicciones relacionadas a CHNG
+    --actualizando las columnas match para las predicciones relacionadas a CHNG, DIGIT, PXC_PREF, DECENA 
 	update olap_sys.predicciones_all
 	   set match1 = case when pred1 = res1 then 1 else 0 end
 		 , match2 = case when pred2 = res2 then 1 else 0 end
@@ -1077,8 +1104,17 @@ begin
        and (instr(prediccion_tipo,'CHNG') > 0
 	    or  instr(prediccion_tipo,'DIGIT') > 0
         or  instr(prediccion_tipo,'PXC_PREF') > 0
-        or  instr(prediccion_tipo,'PXC') > 0);
-	   
+        or  instr(prediccion_tipo,'PXC') > 0
+		or  instr(prediccion_tipo,'DECENA') > 0);
+
+    --actualizando las columnas match para las predicciones relacionadas a PIP 
+	update olap_sys.predicciones_all
+	   set match1 = case when pred1 = res1 then 1 else 0 end
+		 , match2 = case when pred2 = res2 then 1 else 0 end
+		 , match3 = case when pred3 = res3 then 1 else 0 end
+	 where prediccion_sorteo = ln$sorteo_anterior
+       and instr(prediccion_tipo,'PIP') > 0;
+		
     --actualizando las columnas match para las predicciones relacionadas a LT y FR
 	update olap_sys.predicciones_all
 	   set match1 = case when pred1 = '#' and res1 = '#' then 0 when pred1 = res1 then 1 else 0 end
@@ -1717,22 +1753,22 @@ begin
 	      , pn_sorteo
 	      , pv_tipo
 		  , pn_sig_sorteo1
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred1,'1','R','2','G','3','B') else pv_pred1 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred1)	
 	      , pf_pres1
 		  , pn_sig_sorteo2
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred2,'1','R','2','G','3','B') else pv_pred2 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred2)
 	      , pf_pres2
 		  , pn_sig_sorteo3
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred3,'1','R','2','G','3','B') else pv_pred3 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred3)
 	      , pf_pres3
 		  , pn_sig_sorteo4
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred4,'1','R','2','G','3','B') else pv_pred4 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred4)
 	      , pf_pres4
 		  , pn_sig_sorteo5
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred5,'1','R','2','G','3','B') else pv_pred5 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred5)
 	      , pf_pres5
 		  , pn_sig_sorteo6
-	      , case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred6,'1','R','2','G','3','B') else pv_pred6 end
+	      , olap_sys.w_common_pkg.transformar_valor_posicion(pv_tipo => pv_tipo, pv_pred => pv_pred6)
 	      , pf_pres6);
 	commit;		  
 exception
@@ -2205,6 +2241,164 @@ exception
     raise; 
 end comparativo_lt_handler;
 
+--!insertar registros en la tabla history_digit_info del sorteo actual
+procedure ins_history_digit_info(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'ins_history_digit_info'; 
+begin
+	insert into olap_sys.history_digit_info (drawing_id
+										   , b_type
+										   , digit_hdr
+										   , history_digit
+										   , match_cnt
+										   , drawing_cnt
+										   , next_drawing_id
+										   , id
+										   , fr
+										   , lt
+										   , ca
+										   , pxc
+										   , preferencia
+										   , chng
+										   , pxc_pref
+										   , jugar_flag)
+	with posicion_tbl as (
+	select hh.drawing_id, hh.b_type, hh.digit digit_hdr
+		 , hd.id, hd.history_digit, hd.match_cnt, hd.drawing_cnt, hd.drawing_list, hd.next_drawing_id, hd.winner_flag
+	  from olap_sys.position_digit_history_header hh
+		 , olap_sys.position_digit_history_dtl hd
+	 where hh.drawing_id = pn_drawing_id 
+	   and hh.header_id = hd.header_id
+	   and hh.b_type = hd.b_type
+	)
+	, resultados_tbl as (
+	select hd.id, hh.b_type, hh.drawing_id, hh.digit digit_hdr
+		 , hd.next_drawing_id, hd.history_digit, hd.winner_flag
+	  from olap_sys.position_digit_history_header hh
+		 , olap_sys.position_digit_history_dtl hd
+	 where hd.winner_flag is not null
+	   and hh.header_id = hd.header_id
+	   and hh.b_type = hd.b_type
+	)
+	, cnt_resultados_tbl as (
+	select b_type
+		 , id
+		 , count(1) cnt
+	  from resultados_tbl
+	 where drawing_id >=  pn_drawing_id -100
+	 group by b_type
+		 , id 
+	)
+	, rango_resultados_tbl as (
+	select b_type rango_b_type
+		 , min(id) min_id
+		 , round(avg(id)) avg_id
+	  from cnt_resultados_tbl
+	 group by b_type
+	)
+	, output_tbl as (
+	select p.drawing_id, p.b_type, p.digit_hdr, p.history_digit, p.match_cnt, p.drawing_cnt, p.next_drawing_id, p.id
+		 , nvl(decode(c.color_ubicacion,-1,'#',1,'R',2,'G',3,'B'),'#') fr
+		 , nvl(decode(c.color_ley_tercio,-1,'#',1,'R',2,'G',3,'B'),'#') lt
+		 , nvl(c.ciclo_aparicion,-1) ca
+		 , decode(c.pronos_ciclo,null,0,1) pxc
+		 , nvl(c.preferencia_flag,'.') pre
+		 , case when c.chng_posicion is null then '.' else 'C' end chng
+		 , case when c.pronos_ciclo is null and c.preferencia_flag is null then 0
+				when c.pronos_ciclo is null and c.preferencia_flag is not null then 1
+				when c.pronos_ciclo is not null and c.preferencia_flag is null then 2
+				when c.pronos_ciclo is not null and c.preferencia_flag is not null then 3 end pxc_pref
+		 , case when id between (select min_id from rango_resultados_tbl where rango_b_type=p.b_type) and (select avg_id from rango_resultados_tbl where rango_b_type=p.b_type) then 'Y' else 'N' end jugar_flag
+	  from posicion_tbl p
+		 , olap_sys.s_calculo_stats c
+	 where c.drawing_id(+) = p.drawing_id
+	   and c.b_type(+) = p.b_type
+	   and c.digit(+) = p.history_digit
+	)
+	select drawing_id, b_type, digit_hdr, history_digit, match_cnt, drawing_cnt, next_drawing_id, id, fr, lt, ca, pxc, pre, chng, pxc_pref, jugar_flag
+	  from output_tbl
+	 where jugar_flag = 'Y';	
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_history_digit_info;	
+
+--!actualizar registros en la tabla history_digit_info del sorteo anterior
+procedure upd_history_digit_info(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_history_digit_info'; 
+	cursor c_resultados (pn_drawing_id		number) is
+	select gambling_id, comb1, comb2, comb3, comb4, comb5, comb6
+	  from olap_sys.pm_mr_resultados_v2
+	 where gambling_id = pn_drawing_id;
+	
+begin
+	--!actualizando el campo de numeros repetidos
+	--!en base a los resultados del sorteo anterior
+	for r in c_resultados (pn_drawing_id	=> pn_drawing_id) loop
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B1'
+		   and history_digit = r.comb1;
+		   
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B2'
+		   and history_digit = r.comb2;		   
+		   
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B3'
+		   and history_digit = r.comb3;
+
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B4'
+		   and history_digit = r.comb4;
+
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B5'
+		   and history_digit = r.comb5;
+
+		update olap_sys.history_digit_info
+		   set winner_flag = 'Y'
+		     , updated_date = sysdate
+		 where drawing_id = pn_drawing_id
+           and b_type = 'B6'
+		   and history_digit = r.comb6;		   
+	end loop;	
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_history_digit_info;	
+
+--!insertar y actualizar el historico de digitos en base al id del sorteo
+procedure history_digit_info_handler(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'history_digit_info_handler'; 
+begin
+
+	--!insertar registros en la tabla history_digit_info del sorteo actual
+	ins_history_digit_info(pn_drawing_id => pn_drawing_id);
+	
+	--!actualizar registros en la tabla history_digit_info del sorteo anterior
+	upd_history_digit_info(pn_drawing_id => pn_drawing_id -1);
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end history_digit_info_handler;	
+							   
 end w_gl_automaticas_pkg;
 /
 show errors;

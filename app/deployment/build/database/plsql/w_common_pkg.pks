@@ -1166,7 +1166,23 @@ function contar_igualdades (pv_string1		varchar2
 function get_favorito(pn_drawing_id		number
 				    , pn_pxc				number
 				    , pv_preferido		varchar2) return number;	
-						  
+
+--!convertir el string de la decena a numero
+function get_decena_to_numero(pv_decena		varchar2) return number;
+
+--!convertir numero a string de decena 
+function get_numero_to_decena(pv_numero		varchar2) return varchar2;
+
+--!convertir el digito a numero one-hot encoded
+function get_digito_to_numero(pn_numero		number) return number;
+
+--!transformar los valores que vienen de la predicciones
+function transformar_valor_posicion(pv_tipo		varchar2
+								  , pv_pred		varchar2) return varchar2;
+								  
+--!convertir digito a string de decena 
+function get_digito_to_decena(pn_numero		number) return varchar2;
+								  
 end w_common_pkg;
 /
 show errors;

@@ -16,6 +16,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
 import warnings
 
 #valores contantes
@@ -26,6 +28,7 @@ DB_PORT = '1521'
 DB_SERVICE = 'lcl'
 SORTEO_BASE = 896
 EPOCHS = 13
+N_SPLITS = 5
 GUARDA_PREDICCION=True
 
 # Suprimir todas las advertencias (no recomendado a menos que sepas lo que estás haciendo)
@@ -132,6 +135,43 @@ def create_gl_dataframe (sorteo_id:int, sorteo_base:int=0):
 		conn.close()
 
 
+# Crear el dataframe con la info del histórico de los sorteos basado en primos, impares y pares
+def create_gl_dataframe_pip(sorteo_id: int = 0):
+    try:
+        # Formando el string de conexión
+        str_conn = DB_USER + "/" + DB_PWD + "@//" + DB_HOST + ":" + DB_PORT + "/" + DB_SERVICE
+        # Conectando a la base de datos
+        conn = cx_Oracle.connect(str_conn)
+    except Exception as err:
+        print('Exception while creating a Oracle connection', err)
+        return None
+    else:
+        try:
+            # Construyendo el query
+            query_stmt = """
+            SELECT GAMBLING_ID ID, 
+                   PN_CNT, 
+                   NONE_CNT, 
+                   PAR_CNT 
+            FROM OLAP_SYS.PM_MR_RESULTADOS_V2
+            WHERE 1=1
+            ORDER BY ID
+            """
+            cursor = conn.cursor()
+            cursor.execute(query_stmt)
+            # Convirtiendo el resultset en un DataFrame de Pandas
+            columns = ['ID', 'PN_CNT', 'NONE_CNT', 'PAR_CNT']  # Nombres de columnas
+            df = pd.DataFrame(cursor.fetchall(), columns=columns)
+            return df
+        except Exception as err:
+            print('Exception raised while executing the query', err)
+            return None
+        finally:
+            cursor.close()  # Asegurarse de cerrar el cursor
+    finally:
+        conn.close()  # Cerrar la conexión
+
+
 #prediccion ley del tercio
 def prediccion_lt(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
 	try:
@@ -190,7 +230,7 @@ def prediccion_lt(df, label, sorteo_id, posicion, prediccion_dic, nombre_algorit
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -297,7 +337,7 @@ def prediccion_lt_2(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
 			valor_prediccion = model.predict(nuevo_registro)
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -392,7 +432,7 @@ def prediccion_lt_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the current instance (e.g., latest record)
 		X_latest = X_test[-1:]  # Assuming you want the prediction for the last test instance
@@ -400,7 +440,7 @@ def prediccion_lt_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		valor_prediccion = valor_prediccion_prob.argmax(axis=1)[
 								0] + 1  # Add 1 to match original class labels (1, 2, 3)
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -516,7 +556,7 @@ def prediccion_lt_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
                 loss.backward()
                 optimizer.step()
 
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+            #print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
         # Evaluate the model on test data
         model.eval()
@@ -526,7 +566,7 @@ def prediccion_lt_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
         # Calculate accuracy
         precision_score = accuracy_score(y_test, y_pred)
-        print(f"Model Accuracy: {precision_score * 100:.2f}%")
+        #print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
         # Single prediction for the latest record in the dataset
         X_latest = X_test_tensor[-1].unsqueeze(0)  # Assuming you want the prediction for the last test instance
@@ -534,7 +574,7 @@ def prediccion_lt_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
             valor_prediccion_prob = model(X_latest)
             valor_prediccion = torch.argmax(valor_prediccion_prob, dim=1).item() + 1  # Add 1 to match original labels (1, 2, 3)
 
-        print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+        #print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
         # Update prediction dictionary
         prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -630,7 +670,7 @@ def prediccion_fr(df, label, sorteo_id, posicion, prediccion_dic, nombre_algorit
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -737,7 +777,7 @@ def prediccion_fr_2(df, label, sorteo_id, posicion, prediccion_dic, nombre_algor
 			nuevo_registro = X.iloc[-1].values.reshape(1, -1)
 			valor_prediccion = model.predict(nuevo_registro)
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -832,7 +872,7 @@ def prediccion_fr_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the current instance (e.g., latest record)
 		X_latest = X_test[-1:]  # Assuming you want the prediction for the last test instance
@@ -840,7 +880,7 @@ def prediccion_fr_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 		valor_prediccion = valor_prediccion_prob.argmax(axis=1)[
 								0] + 1  # Add 1 to match original class labels (1, 2, 3)
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -966,7 +1006,7 @@ def prediccion_fr_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset
 		X_latest = X_test_tensor[-1].unsqueeze(0)  # Assuming you want the prediction for the last test instance
@@ -974,7 +1014,7 @@ def prediccion_fr_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 			valor_prediccion_prob = model(X_latest)
 			valor_prediccion = torch.argmax(valor_prediccion_prob, dim=1).item() + 1  # Add 1 to match original labels (1, 2, 3)
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -1070,7 +1110,7 @@ def prediccion_primo(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1160,7 +1200,7 @@ def prediccion_primo_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1219,9 +1259,9 @@ def prediccion_primo_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 
 		# Convert data to PyTorch tensors
 		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-		y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1,1)
 		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-		y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1,1)
 
 		# Create DataLoader for training data
 		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -1250,8 +1290,9 @@ def prediccion_primo_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		model.train()
 		for epoch in range(epochs):
 			for batch_X, batch_y in train_loader:
+				batch_y = batch_y.view(-1,1)  # Ensure 1D tensor
 				# Forward pass
-				outputs = model(batch_X).squeeze()  # Remove extra dimension
+				outputs = model(batch_X)
 				loss = criterion(outputs, batch_y)
 
 			# Backward pass and optimization
@@ -1259,17 +1300,17 @@ def prediccion_primo_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 			loss.backward()
 			optimizer.step()
 
-		print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+		#print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on the test set
 		model.eval()
 		with torch.no_grad():
-			y_pred_prob = model(X_test_tensor).squeeze()  # Squeeze to remove extra dimension
+			y_pred_prob = model(X_test_tensor)
 			y_pred = (y_pred_prob > 0.5).float()  # Convert probabilities to binary predictions
 
 		# Calculate accuracy
-		precision_score = accuracy_score(y_test, y_pred.numpy())
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		precision_score = accuracy_score(y_test, y_pred.numpy().squeeze())
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Predict for the latest record in the dataset
 		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -1308,7 +1349,7 @@ def prediccion_primo_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		return prediccion_dic
 
 	except ValueError as ve:
@@ -1377,7 +1418,7 @@ def prediccion_impar(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1467,7 +1508,7 @@ def prediccion_impar_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1527,9 +1568,9 @@ def prediccion_impar_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 
 		# Convert data to PyTorch tensors
 		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-		y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
 		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-		y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
 
 		# Create DataLoader for training data
 		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -1558,8 +1599,9 @@ def prediccion_impar_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		model.train()
 		for epoch in range(epochs):
 			for batch_X, batch_y in train_loader:
+				batch_y = batch_y.view(-1, 1)
 				# Forward pass
-				outputs = model(batch_X).squeeze()  # Remove extra dimension
+				outputs = model(batch_X)
 				loss = criterion(outputs, batch_y)
 
 			# Backward pass and optimization
@@ -1567,17 +1609,17 @@ def prediccion_impar_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 			loss.backward()
 			optimizer.step()
 
-		print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+		#print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on the test set
 		model.eval()
 		with torch.no_grad():
-			y_pred_prob = model(X_test_tensor).squeeze()  # Squeeze to remove extra dimension
+			y_pred_prob = model(X_test_tensor)
 			y_pred = (y_pred_prob > 0.5).float()  # Convert probabilities to binary predictions
 
 		# Calculate accuracy
-		precision_score = accuracy_score(y_test, y_pred.numpy())
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		precision_score = accuracy_score(y_test, y_pred.numpy().squeeze())
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Predict for the latest record in the dataset
 		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -1616,7 +1658,7 @@ def prediccion_impar_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		return prediccion_dic
 
 	except ValueError as ve:
@@ -1685,7 +1727,7 @@ def prediccion_par(df, label, sorteo_id, posicion, prediccion_dic, nombre_algori
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1775,7 +1817,7 @@ def prediccion_par_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_alg
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -1835,9 +1877,9 @@ def prediccion_par_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 
 		# Convert data to PyTorch tensors
 		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-		y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
 		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-		y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
 
 		# Create DataLoader for training data
 		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -1866,8 +1908,9 @@ def prediccion_par_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 		model.train()
 		for epoch in range(epochs):
 			for batch_X, batch_y in train_loader:
+				batch_y = batch_y.view(-1, 1)
 				# Forward pass
-				outputs = model(batch_X).squeeze()  # Remove extra dimension
+				outputs = model(batch_X)
 				loss = criterion(outputs, batch_y)
 
 			# Backward pass and optimization
@@ -1875,17 +1918,17 @@ def prediccion_par_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 			loss.backward()
 			optimizer.step()
 
-		print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+		#print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on the test set
 		model.eval()
 		with torch.no_grad():
-			y_pred_prob = model(X_test_tensor).squeeze()  # Squeeze to remove extra dimension
+			y_pred_prob = model(X_test_tensor)
 			y_pred = (y_pred_prob > 0.5).float()  # Convert probabilities to binary predictions
 
 		# Calculate accuracy
-		precision_score = accuracy_score(y_test, y_pred.numpy())
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		precision_score = accuracy_score(y_test, y_pred.numpy().squeeze())
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Predict for the latest record in the dataset
 		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -1924,7 +1967,7 @@ def prediccion_par_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		return prediccion_dic
 
 	except ValueError as ve:
@@ -1993,7 +2036,7 @@ def prediccion_change(df, label, sorteo_id, posicion, prediccion_dic, nombre_alg
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -2083,7 +2126,7 @@ def prediccion_change_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -2143,9 +2186,9 @@ def prediccion_change_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 
 		# Convert data to PyTorch tensors
 		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-		y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
 		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-		y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
 
 		# Create DataLoader for training data
 		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -2174,8 +2217,9 @@ def prediccion_change_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 		model.train()
 		for epoch in range(epochs):
 			for batch_X, batch_y in train_loader:
+				batch_y = batch_y.view(-1, 1)
 				# Forward pass
-				outputs = model(batch_X).squeeze()  # Remove extra dimension
+				outputs = model(batch_X)
 				loss = criterion(outputs, batch_y)
 
 			# Backward pass and optimization
@@ -2183,17 +2227,17 @@ def prediccion_change_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 			loss.backward()
 			optimizer.step()
 
-		print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+		#print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on the test set
 		model.eval()
 		with torch.no_grad():
-			y_pred_prob = model(X_test_tensor).squeeze()  # Squeeze to remove extra dimension
+			y_pred_prob = model(X_test_tensor)
 			y_pred = (y_pred_prob > 0.5).float()  # Convert probabilities to binary predictions
 
 		# Calculate accuracy
-		precision_score = accuracy_score(y_test, y_pred.numpy())
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		precision_score = accuracy_score(y_test, y_pred.numpy().squeeze())
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Predict for the latest record in the dataset
 		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -2232,7 +2276,7 @@ def prediccion_change_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		return prediccion_dic
 
 	except ValueError as ve:
@@ -2301,7 +2345,7 @@ def prediccion_digit(df, label, sorteo_id, posicion, prediccion_dic, nombre_algo
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -2389,7 +2433,7 @@ def prediccion_digit_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
 		# Evaluate accuracy on test data
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Test Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Test Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset
 		nuevo_registro = X_test[-1:]  # Last row for prediction
@@ -2397,7 +2441,7 @@ def prediccion_digit_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 		valor_prediccion = single_prediction_prob.argmax(axis=1)[0] + 1  # Add 1 to match original range (1 to 39)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, valor_prediccion: {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, valor_prediccion: {valor_prediccion}")
 
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
 		prediccion_dic["prediccion_tipo"] = "7." + label
@@ -2467,9 +2511,9 @@ def prediccion_digit_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 
 		# Convert data to PyTorch tensors
 		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-		y_train_tensor = torch.tensor(y_train.values, dtype=torch.long)
+		y_train_tensor = torch.tensor(y_train.values, dtype=torch.long).squeeze()
 		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-		y_test_tensor = torch.tensor(y_test.values, dtype=torch.long)
+		y_test_tensor = torch.tensor(y_test.values, dtype=torch.long).squeeze()
 
 		# Create DataLoader for training data
 		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
@@ -2508,7 +2552,7 @@ def prediccion_digit_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 				loss.backward()
 				optimizer.step()
 
-			print(f"Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}")
+			#print(f"Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on test data
 		model.eval()
@@ -2518,7 +2562,7 @@ def prediccion_digit_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 
 		# Compute accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Test Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Test Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset
 		nuevo_registro = X_test_tensor[-1].unsqueeze(0)  # Last row for prediction
@@ -2528,8 +2572,7 @@ def prediccion_digit_torch(df, label, sorteo_id, posicion, prediccion_dic, nombr
 											dim=1).item() + 1  # Add 1 to match original range (1 to 39)
 
 		# Print or return the single prediction
-		print(
-			f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, valor_prediccion: {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, valor_prediccion: {valor_prediccion}")
 
 		# Update prediction dictionary as in original code
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -2634,7 +2677,7 @@ def prediccion_pxc(df, label, sorteo_id, posicion, prediccion_dic, nombre_algori
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -2732,7 +2775,7 @@ def prediccion_pxc_pref(df, label, sorteo_id, posicion, prediccion_dic, nombre_a
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -2817,7 +2860,7 @@ def prediccion_pxc_pref_tf(df, label, sorteo_id, posicion, prediccion_dic, nombr
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset (similar to what was done in the original function)
 		nuevo_registro = X_test[-1:]  # Assuming you want to predict for the last instance in the test set
@@ -2827,7 +2870,7 @@ def prediccion_pxc_pref_tf(df, label, sorteo_id, posicion, prediccion_dic, nombr
 		# Print or return the single prediction
 		print(f"Predicción para el registro más reciente: {valor_prediccion}")
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -2925,7 +2968,7 @@ def prediccion_pxc_pref_torch(df, label, sorteo_id, posicion, prediccion_dic, no
                 loss.backward()
                 optimizer.step()
 
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+            #print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
         # Evaluate the model on the test set
         model.eval()
@@ -2935,7 +2978,7 @@ def prediccion_pxc_pref_torch(df, label, sorteo_id, posicion, prediccion_dic, no
 
         # Calculate accuracy
         precision_score = accuracy_score(y_test, y_pred)
-        print(f"Model Accuracy: {precision_score * 100:.2f}%")
+        #print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
         # Single prediction for the latest record in the dataset
         nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -2974,7 +3017,7 @@ def prediccion_pxc_pref_torch(df, label, sorteo_id, posicion, prediccion_dic, no
             prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
         # Print or return the single prediction
-        print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+        #print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
         return prediccion_dic
 
     except Exception as e:
@@ -3040,7 +3083,7 @@ def prediccion_decena(df, label, sorteo_id, posicion, prediccion_dic, nombre_alg
 
 		# Ajustar las etiquetas de vuelta al rango original y mostrar las predicciones
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		#print("Predicción de Logistic Regression:", prediccion_log_reg)
 		#print("Predicción de Random Forest:", prediccion_rf)
 
@@ -3129,7 +3172,7 @@ def prediccion_decena_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset (similar to what was done in the original function)
 		nuevo_registro = X_test[-1:]  # Assuming you want to predict for the last instance in the test set
@@ -3139,7 +3182,7 @@ def prediccion_decena_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_
 		# Print or return the single prediction
 		print(f"Predicción para el registro más reciente: {valor_prediccion}")
 
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 
 		# Update prediction dictionary
 		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
@@ -3235,12 +3278,12 @@ def prediccion_decena_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 				outputs = model(batch_X)
 				loss = criterion(outputs, batch_y)
 
-				# Backward pass and optimization
-				optimizer.zero_grad()
-				loss.backward()
-				optimizer.step()
+			# Backward pass and optimization
+			optimizer.zero_grad()
+			loss.backward()
+			optimizer.step()
 
-			print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
+			#print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}")
 
 		# Evaluate the model on the test set
 		model.eval()
@@ -3250,7 +3293,7 @@ def prediccion_decena_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 
 		# Calculate accuracy
 		precision_score = accuracy_score(y_test, y_pred)
-		print(f"Model Accuracy: {precision_score * 100:.2f}%")
+		#print(f"Model Accuracy: {precision_score * 100:.2f}%")
 
 		# Single prediction for the latest record in the dataset
 		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
@@ -3289,12 +3332,819 @@ def prediccion_decena_torch(df, label, sorteo_id, posicion, prediccion_dic, nomb
 			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
 
 		# Print or return the single prediction
-		print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
+		#print(f"nombre_algoritmo: {nombre_algoritmo}, siguiente_sorteo: {siguiente_sorteo}, {valor_prediccion}")
 		return prediccion_dic
 
 	except Exception as e:
 		print(f"Error in prediccion_lt: {e}")
 		return None
+
+
+# Predicción de contador de números primos
+def prediccion_primo_pip(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+    try:
+        # Calcular el siguiente sorteo
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Definir las columnas de features y label
+        feature_columns = ['NONE_CNT', 'PAR_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label
+
+        # Dividir los datos en conjuntos de entrenamiento y prueba
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        # Seleccionar el algoritmo especificado
+        if nombre_algoritmo == "log_reg":
+            # Inicializar y entrenar Logistic Regression
+            log_reg = LogisticRegression(max_iter=300, random_state=42)
+            log_reg.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            log_reg_pred = log_reg.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, log_reg_pred)
+            #print("Precisión de Logistic Regression:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = log_reg.predict(nuevo_registro)[0]
+
+        elif nombre_algoritmo == "rf":
+            # Inicializar y entrenar Random Forest Classifier
+            rf_clf = RandomForestClassifier(random_state=42)
+            rf_clf.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            rf_clf_pred = rf_clf.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, rf_clf_pred)
+            #print("Precisión de Random Forest:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = rf_clf.predict(nuevo_registro)[0]
+
+        # Asegurar que la predicción esté dentro del rango 0 a 6
+        valor_prediccion = max(0, min(6, valor_prediccion))
+        #print(f"Predicción ({nombre_algoritmo}):", valor_prediccion)
+
+        # Actualizar el diccionario de predicciones
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except Exception as e:
+        print(f"Error in prediccion_lt: {e}")
+        return None
+
+
+# Predicción de contador de números impares
+def prediccion_impar_pip(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+    try:
+        # Calcular el siguiente sorteo
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Definir las columnas de features y label
+        feature_columns = ['PN_CNT', 'PAR_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label
+
+        # Dividir los datos en conjuntos de entrenamiento y prueba
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        # Seleccionar el algoritmo especificado
+        if nombre_algoritmo == "log_reg":
+            # Inicializar y entrenar Logistic Regression
+            log_reg = LogisticRegression(max_iter=300, random_state=42)
+            log_reg.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            log_reg_pred = log_reg.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, log_reg_pred)
+            #print("Precisión de Logistic Regression:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = log_reg.predict(nuevo_registro)[0]
+
+        elif nombre_algoritmo == "rf":
+            # Inicializar y entrenar Random Forest Classifier
+            rf_clf = RandomForestClassifier(random_state=42)
+            rf_clf.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            rf_clf_pred = rf_clf.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, rf_clf_pred)
+            #print("Precisión de Random Forest:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = rf_clf.predict(nuevo_registro)[0]
+
+        # Asegurar que la predicción esté dentro del rango 0 a 6
+        valor_prediccion = max(0, min(6, valor_prediccion))
+        #print(f"Predicción ({nombre_algoritmo}):", valor_prediccion)
+
+        # Actualizar el diccionario de predicciones
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except Exception as e:
+        print(f"Error in prediccion_lt: {e}")
+        return None
+
+
+# Predicción de contador de números pares
+def prediccion_par_pip(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo):
+    try:
+        # Calcular el siguiente sorteo
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Definir las columnas de features y label
+        feature_columns = ['PN_CNT', 'NONE_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label
+
+        # Dividir los datos en conjuntos de entrenamiento y prueba
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        # Seleccionar el algoritmo especificado
+        if nombre_algoritmo == "log_reg":
+            # Inicializar y entrenar Logistic Regression
+            log_reg = LogisticRegression(max_iter=300, random_state=42)
+            log_reg.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            log_reg_pred = log_reg.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, log_reg_pred)
+            #print("Precisión de Logistic Regression:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = log_reg.predict(nuevo_registro)[0]
+
+        elif nombre_algoritmo == "rf":
+            # Inicializar y entrenar Random Forest Classifier
+            rf_clf = RandomForestClassifier(random_state=42)
+            rf_clf.fit(X_train, y_train)
+
+            # Realizar predicciones en el conjunto de prueba
+            rf_clf_pred = rf_clf.predict(X_test)
+
+            # Calcular la precisión del modelo
+            precision_score = accuracy_score(y_test, rf_clf_pred)
+            #print("Precisión de Random Forest:", precision_score)
+
+            # Generar predicción para un nuevo registro (último registro en el dataset)
+            nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+            valor_prediccion = rf_clf.predict(nuevo_registro)[0]
+
+        # Asegurar que la predicción esté dentro del rango 0 a 6
+        valor_prediccion = max(0, min(6, valor_prediccion))
+        #print(f"Predicción ({nombre_algoritmo}):", valor_prediccion)
+
+        # Actualizar el diccionario de predicciones
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except Exception as e:
+        print(f"Error in prediccion_lt: {e}")
+        return None
+
+
+# Predicción de contador de números primos basados en tensorflow
+def prediccion_primo_pip_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # 1. Separate features and label
+        feature_columns = ['NONE_CNT', 'PAR_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label (expected values range from 0 to 6)
+
+        # Preprocessing pipeline: scale numeric features
+        preprocessor = ColumnTransformer(
+            transformers=[('num', StandardScaler(), feature_columns)]
+        )
+        X = preprocessor.fit_transform(X)
+
+        # Initialize KFold
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+        accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+
+            # Build a neural network model
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
+                tf.keras.layers.Dense(128, activation='relu'),
+                tf.keras.layers.Dense(64, activation='relu'),
+                tf.keras.layers.Dense(7, activation='softmax')  # Softmax for 7 classes (0 to 6)
+            ])
+
+            # Compile the model
+            model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+            # Train the model
+            model.fit(X_train, y_train, epochs=EPOCHS, batch_size=32, validation_data=(X_val, y_val), verbose=1)
+
+            # Evaluate accuracy on validation data
+            y_val_pred_prob = model.predict(X_val)
+            y_val_pred = y_val_pred_prob.argmax(axis=1)
+            precision_score = accuracy_score(y_val, y_val_pred)
+            accuracies.append(precision_score)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(accuracies)
+
+        # Single prediction for the latest record in the dataset
+        nuevo_registro = X[-1:]  # Last row for prediction
+        single_prediction_prob = model.predict(nuevo_registro)
+        valor_prediccion = single_prediction_prob.argmax(axis=1)[0]  # No need to add 1, as range is already 0 to 6
+
+        # Print or return the single prediction
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
+
+
+# Predicción de contador de números impares basados en tensorflow
+def prediccion_impar_pip_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # 1. Separate features and label
+        feature_columns = ['PN_CNT', 'PAR_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label (expected values range from 0 to 6)
+
+        # Preprocessing pipeline: scale numeric features
+        preprocessor = ColumnTransformer(
+            transformers=[('num', StandardScaler(), feature_columns)]
+        )
+        X = preprocessor.fit_transform(X)
+
+        # Initialize KFold
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+        accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+
+            # Build a neural network model
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
+                tf.keras.layers.Dense(128, activation='relu'),
+                tf.keras.layers.Dense(64, activation='relu'),
+                tf.keras.layers.Dense(7, activation='softmax')  # Softmax for 7 classes (0 to 6)
+            ])
+
+            # Compile the model
+            model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+            # Train the model
+            model.fit(X_train, y_train, epochs=EPOCHS, batch_size=32, validation_data=(X_val, y_val), verbose=1)
+
+            # Evaluate accuracy on validation data
+            y_val_pred_prob = model.predict(X_val)
+            y_val_pred = y_val_pred_prob.argmax(axis=1)
+            precision_score = accuracy_score(y_val, y_val_pred)
+            accuracies.append(precision_score)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(accuracies)
+
+        # Single prediction for the latest record in the dataset
+        nuevo_registro = X[-1:]  # Last row for prediction
+        single_prediction_prob = model.predict(nuevo_registro)
+        valor_prediccion = single_prediction_prob.argmax(axis=1)[0]  # No need to add 1, as range is already 0 to 6
+
+        # Print or return the single prediction
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
+
+
+# Predicción de contador de números pares basados en tensorflow
+def prediccion_par_pip_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # 1. Separate features and label
+        feature_columns = ['PN_CNT', 'NONE_CNT']
+        X = df[feature_columns]  # Features
+        y = df[label]  # Label (expected values range from 0 to 6)
+
+        # Preprocessing pipeline: scale numeric features
+        preprocessor = ColumnTransformer(
+            transformers=[('num', StandardScaler(), feature_columns)]
+        )
+        X = preprocessor.fit_transform(X)
+
+        # Initialize KFold
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+        accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+
+            # Build a neural network model
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
+                tf.keras.layers.Dense(128, activation='relu'),
+                tf.keras.layers.Dense(64, activation='relu'),
+                tf.keras.layers.Dense(7, activation='softmax')  # Softmax for 7 classes (0 to 6)
+            ])
+
+            # Compile the model
+            model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+            # Train the model
+            model.fit(X_train, y_train, epochs=EPOCHS, batch_size=32, validation_data=(X_val, y_val), verbose=1)
+
+            # Evaluate accuracy on validation data
+            y_val_pred_prob = model.predict(X_val)
+            y_val_pred = y_val_pred_prob.argmax(axis=1)
+            precision_score = accuracy_score(y_val, y_val_pred)
+            accuracies.append(precision_score)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(accuracies)
+
+        # Single prediction for the latest record in the dataset
+        nuevo_registro = X[-1:]  # Last row for prediction
+        single_prediction_prob = model.predict(nuevo_registro)
+        valor_prediccion = single_prediction_prob.argmax(axis=1)[0]  # No need to add 1, as range is already 0 to 6
+
+        # Print or return the single prediction
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = round(valor_prediccion)
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = round(valor_prediccion)
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = round(valor_prediccion)
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
+
+
+# Predicción de contador de números primos basados en torch
+def prediccion_primo_pip_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, epochs=EPOCHS, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Separate features and label
+        feature_columns = ['NONE_CNT', 'PAR_CNT']
+        X = df[feature_columns].values  # Features
+        y = df[label].values  # Label (expected values are integers from 0 to 6)
+
+        # Preprocess data: scale numeric features
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+        # KFold cross-validation
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        fold_accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            # Convert data to PyTorch tensors
+            X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+            y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+            X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+            y_val_tensor = torch.tensor(y_val, dtype=torch.float32)
+
+            # Create DataLoader for training data
+            train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+            # Define the neural network model for regression
+            class RegressionModel(nn.Module):
+                def __init__(self, input_dim):
+                    super(RegressionModel, self).__init__()
+                    self.fc1 = nn.Linear(input_dim, 64)
+                    self.fc2 = nn.Linear(64, 32)
+                    self.fc3 = nn.Linear(32, 1)  # Single output neuron for regression
+
+                def forward(self, x):
+                    x = torch.relu(self.fc1(x))
+                    x = torch.relu(self.fc2(x))
+                    return self.fc3(x)  # Linear activation for regression
+
+            model = RegressionModel(X_train.shape[1])
+
+            # Loss and optimizer
+            criterion = nn.MSELoss()  # Mean Squared Error Loss
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+            # Training loop
+            model.train()
+            for epoch in range(epochs):
+                for batch_X, batch_y in train_loader:
+                    # Forward pass
+                    outputs = model(batch_X).squeeze()
+                    loss = criterion(outputs, batch_y)
+
+                    # Backward pass and optimization
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+            # Validate the model on the validation set
+            model.eval()
+            with torch.no_grad():
+                y_val_pred = model(X_val_tensor).squeeze()
+                mse = mean_squared_error(y_val, y_val_pred.numpy())
+                accuracy = 1 - (mse / 6)  # Simplified accuracy metric based on range
+                fold_accuracies.append(accuracy)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(fold_accuracies)
+
+        # Predict for the latest record in the dataset
+        nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
+        with torch.no_grad():
+            valor_prediccion = model(nuevo_registro).item()
+            valor_prediccion = round(max(0, min(6, valor_prediccion)))  # Clip to range 0-6
+
+        # Update the prediction dictionary
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = valor_prediccion
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = siguiente_sorteo
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = valor_prediccion
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = siguiente_sorteo
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = valor_prediccion
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = siguiente_sorteo
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
+
+
+# Predicción de contador de números impares basados en torch
+def prediccion_impar_pip_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, epochs=EPOCHS, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Separate features and label
+        feature_columns = ['PN_CNT', 'PAR_CNT']
+        X = df[feature_columns].values  # Features
+        y = df[label].values  # Label (expected values are integers from 0 to 6)
+
+        # Preprocess data: scale numeric features
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+        # KFold cross-validation
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        fold_accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            # Convert data to PyTorch tensors
+            X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+            y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+            X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+            y_val_tensor = torch.tensor(y_val, dtype=torch.float32)
+
+            # Create DataLoader for training data
+            train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+            # Define the neural network model for regression
+            class RegressionModel(nn.Module):
+                def __init__(self, input_dim):
+                    super(RegressionModel, self).__init__()
+                    self.fc1 = nn.Linear(input_dim, 64)
+                    self.fc2 = nn.Linear(64, 32)
+                    self.fc3 = nn.Linear(32, 1)  # Single output neuron for regression
+
+                def forward(self, x):
+                    x = torch.relu(self.fc1(x))
+                    x = torch.relu(self.fc2(x))
+                    return self.fc3(x)  # Linear activation for regression
+
+            model = RegressionModel(X_train.shape[1])
+
+            # Loss and optimizer
+            criterion = nn.MSELoss()  # Mean Squared Error Loss
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+            # Training loop
+            model.train()
+            for epoch in range(epochs):
+                for batch_X, batch_y in train_loader:
+                    # Forward pass
+                    outputs = model(batch_X).squeeze()
+                    loss = criterion(outputs, batch_y)
+
+                    # Backward pass and optimization
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+            # Validate the model on the validation set
+            model.eval()
+            with torch.no_grad():
+                y_val_pred = model(X_val_tensor).squeeze()
+                mse = mean_squared_error(y_val, y_val_pred.numpy())
+                accuracy = 1 - (mse / 6)  # Simplified accuracy metric based on range
+                fold_accuracies.append(accuracy)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(fold_accuracies)
+
+        # Predict for the latest record in the dataset
+        nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
+        with torch.no_grad():
+            valor_prediccion = model(nuevo_registro).item()
+            valor_prediccion = round(max(0, min(6, valor_prediccion)))  # Clip to range 0-6
+
+        # Update the prediction dictionary
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = valor_prediccion
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = siguiente_sorteo
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = valor_prediccion
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = siguiente_sorteo
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = valor_prediccion
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = siguiente_sorteo
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
+
+
+# Predicción de contador de números pares basados en torch
+def prediccion_par_pip_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, epochs=EPOCHS, n_splits=N_SPLITS):
+    try:
+        # Determine the next draw number
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Separate features and label
+        feature_columns = ['PN_CNT', 'NONE_CNT']
+        X = df[feature_columns].values.astype(np.float32)  # Features (ensure compatibility with PyTorch)
+        y = df[label].values.astype(np.float32)  # Label (ensure compatibility with PyTorch)
+
+        # Preprocess data: scale numeric features
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+        # KFold cross-validation
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        fold_accuracies = []
+
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            # Convert data to PyTorch tensors
+            X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+            y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+            X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+            y_val_tensor = torch.tensor(y_val, dtype=torch.float32)
+
+            # Create DataLoader for training data
+            train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+            # Define the neural network model for regression
+            class RegressionModel(nn.Module):
+                def __init__(self, input_dim):
+                    super(RegressionModel, self).__init__()
+                    self.fc1 = nn.Linear(input_dim, 64)
+                    self.fc2 = nn.Linear(64, 32)
+                    self.fc3 = nn.Linear(32, 1)  # Single output neuron for regression
+
+                def forward(self, x):
+                    x = torch.relu(self.fc1(x))
+                    x = torch.relu(self.fc2(x))
+                    return self.fc3(x)  # Linear activation for regression
+
+            model = RegressionModel(X_train.shape[1])
+
+            # Loss and optimizer
+            criterion = nn.MSELoss()  # Mean Squared Error Loss
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+            # Training loop
+            model.train()
+            for epoch in range(epochs):
+                for batch_X, batch_y in train_loader:
+                    # Forward pass
+                    outputs = model(batch_X).squeeze()
+                    loss = criterion(outputs, batch_y)
+
+                    # Backward pass and optimization
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+            # Validate the model on the validation set
+            model.eval()
+            with torch.no_grad():
+                y_val_pred = model(X_val_tensor).squeeze()
+                mse = mean_squared_error(y_val, y_val_pred.numpy())
+                accuracy = 1 - (mse / 6)  # Simplified accuracy metric based on range
+                fold_accuracies.append(accuracy)
+
+        # Average accuracy across folds
+        average_accuracy = np.mean(fold_accuracies)
+
+        # Predict for the latest record in the dataset
+        nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)).astype(np.float32), dtype=torch.float32)
+        with torch.no_grad():
+            valor_prediccion = model(nuevo_registro).item()
+            valor_prediccion = round(max(0, min(6, valor_prediccion)))  # Clip to range 0-6
+
+        # Update the prediction dictionary
+        prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+        prediccion_dic["prediccion_tipo"] = "11.PIP"
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
+        prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+
+        if posicion == 1:
+            prediccion_dic['prediccion_1'] = valor_prediccion
+            prediccion_dic['precision_1'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_1"] = siguiente_sorteo
+        if posicion == 2:
+            prediccion_dic['prediccion_2'] = valor_prediccion
+            prediccion_dic['precision_2'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_2"] = siguiente_sorteo
+        if posicion == 3:
+            prediccion_dic['prediccion_3'] = valor_prediccion
+            prediccion_dic['precision_3'] = round(average_accuracy, 3)
+            prediccion_dic["siguiente_sorteo_3"] = siguiente_sorteo
+
+        return prediccion_dic
+
+    except ValueError as ve:
+        print(f"Error de valor: {ve}")
+        raise
+    except Exception as e:
+        print(f"Ocurrió un error durante el procesamiento: {e}")
+        raise
 
 
 # Chequear y visualizar NaNs en el DataFrame
@@ -3611,6 +4461,85 @@ def procesa_predicciones_torch(df, nombre_algoritmo:str, label:str, id_base:int)
 		ejecutar_procedimiento(prediccion_gl)
 
 
+#proceso encargado de ejecutar todos los modelos de prediccion
+def procesa_predicciones_pip(df, nombre_algoritmo:str, id_base:int):
+
+	# arreglo para almacenar el valor de las predicciones por cada b_type
+	prediccion_gl = {
+		"nombre_algoritmo": None,
+		"prediccion_tipo": None,
+		"prediccion_sorteo": 0,
+		"siguiente_sorteo_1": 0,
+		"prediccion_1": 0,
+		"precision_1": 0.0,
+		"siguiente_sorteo_2": 0,
+		"prediccion_2": 0,
+		"precision_2": 0.0,
+		"siguiente_sorteo_3": 0,
+		"prediccion_3": 0,
+		"precision_3": 0.0,
+		"siguiente_sorteo_4": 0,
+		"prediccion_4": 0,
+		"precision_4": 0.0,
+		"siguiente_sorteo_5": 0,
+		"prediccion_5": 0,
+		"precision_5": 0.0,
+		"siguiente_sorteo_6": 0,
+		"prediccion_6": 0,
+		"precision_6": 0.0
+	}
+
+	for posicion in range(1,4):
+		if posicion == 1:
+			label = "PN_CNT"
+			if nombre_algoritmo in ("rf","log_reg"):
+				# prediccion contador de números primos
+				prediccion_primo_pip(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			if nombre_algoritmo == "tensorflow":
+				# Predicción de contador de números primos basados en tensorflow
+				prediccion_primo_pip_tf(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			if nombre_algoritmo == "torch":
+				# Predicción de contador de números primos basados en torch
+				prediccion_primo_pip_torch(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+		elif posicion == 2:
+			label = "NONE_CNT"
+			if nombre_algoritmo in ("rf", "log_reg"):
+				# Predicción de contador de números impares
+				prediccion_impar_pip(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			if nombre_algoritmo == "tensorflow":
+				# Predicción de contador de números impares basados en tensorflow
+				prediccion_impar_pip_tf(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			if nombre_algoritmo == "torch":
+				# Predicción de contador de números impares basados en torch
+				prediccion_impar_pip_torch(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+		elif posicion == 3:
+			label = "PAR_CNT"
+			if nombre_algoritmo in ("rf", "log_reg"):
+				# Predicción de contador de números pares
+				prediccion_par_pip(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			if nombre_algoritmo == "tensorflow":
+				# Predicción de contador de números pares basados en tensorflow
+				prediccion_par_pip_tf(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+			#comentado debido a que esta lanznado una excepcion
+			#if nombre_algoritmo == "torch":
+				# Predicción de contador de números pares basados en tensorflow
+				#prediccion_par_pip_torch(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
+
+		#ya que estan completas las predicciones de la jugada se imprimen
+		if posicion == 3:
+			print(prediccion_gl)
+
+	if GUARDA_PREDICCION:
+		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
+		ejecutar_procedimiento(prediccion_gl)
+
+
 def procesa_subtarea(id_base, df):
 	#ley del tercio
 	label = "LT"
@@ -3748,64 +4677,83 @@ def procesa_subtarea_nn(id_base, df):
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#frequencia
 	label = "FR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#digitos
 	label = "DIGIT"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#primos
 	label = "PRIMO"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#impares
 	label = "IMPAR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#pares
 	label = "PAR"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#numeros con cambios
 	label = "CHNG"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
 	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
 
 	#decenas
 	label = "DECENA"
 	print("-------------------------------------")
 	nombre_algoritmo = "tensorflow"
-	#procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
-	#nombre_algoritmo = "torch"
-	#procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+	procesa_predicciones_tf(df, nombre_algoritmo, label, id_base)
+	nombre_algoritmo = "torch"
+	procesa_predicciones_torch(df, nombre_algoritmo, label, id_base)
+
+
+# proceso encargado de ejecutar los modelos de prediccion basados en primos, impares y pares
+def procesa_subtarea_pip(id_base, df):
+	nombre_algoritmo = "log_reg"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_pip(df, nombre_algoritmo, id_base)
+	print("-------------------------------------")
+	nombre_algoritmo = "rf"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_pip(df, nombre_algoritmo, id_base)
+	print("-------------------------------------")
+	nombre_algoritmo = "tensorflow"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_pip(df, nombre_algoritmo, id_base)
+	print("-------------------------------------")
+	nombre_algoritmo = "torch"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_pip(df, nombre_algoritmo, id_base)
 
 
 #proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
@@ -3826,6 +4774,23 @@ def procesa_tarea(id_base):
 		print("Hay valores NaN en el dataset")
 		raise
 
+#proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
+#basado en primos, impares y pares
+def procesa_tarea_pip(id_base):
+	#formar el dataframe con la info del histiroc
+	df= create_gl_dataframe_pip(id_base)
+
+	# Chequear y visualizar NaNs en el DataFrame
+	nan_count = check_nans(df)
+
+	#si no hay valores nulos se procede a realizar la prediccion
+	if nan_count == 0:
+		# proceso encargado de ejecutar los modelos de prediccion basados en primos, impares y pares
+		procesa_subtarea_pip(id_base, df)
+	else:
+		print("Hay valores NaN en el dataset")
+		raise
+
 
 #funcion principal
 def main():
@@ -3838,6 +4803,9 @@ def main():
 	# proceso encargado de ejecutar el modelo de prediccion para el label preferencia_flag
 	procesa_tarea_sorteo_base(id_base)
 
+	#proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
+	#basado en primos, impares y pares
+	procesa_tarea_pip(id_base)
 
 
 

@@ -1467,6 +1467,12 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 
 				--!proceso para buscar patrones en el historico de mapas de ley del tercio
 				olap_sys.w_NEW_pick_panorama_pkg.search_pattern_handler(pn_drawing_id => i.gambling_id);
+
+				--!insertar conteo de los digitos acerca de jugadas y resultados
+				olap_sys.w_gl_automaticas_pkg.digit_counts_handler(pn_drawing_id => i.gambling_id);
+				
+				--!insertar y actualizar el historico de digitos en base al id del sorteo
+				olap_sys.w_gl_automaticas_pkg.history_digit_info_handler(pn_drawing_id => i.gambling_id);
 				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;

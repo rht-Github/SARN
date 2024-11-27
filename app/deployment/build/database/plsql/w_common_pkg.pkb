@@ -6537,7 +6537,106 @@ exception
 		return -1;
 		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
 end get_favorito;	
-					
+
+--!convertir el string de la decena a numero
+function get_decena_to_numero(pv_decena		varchar2) return number is
+	LV$PROCEDURE_NAME       	constant varchar2(30) := 'get_decena_to_numero';	
+begin
+	if pv_decena = '1-9' then
+		return 1;
+	elsif pv_decena = '10-19' then
+		return 2;
+	elsif pv_decena = '20-29' then
+		return 3;
+	elsif pv_decena = '30-39' then
+		return 4;
+	end if;
+exception
+	when others then
+		return -1;
+		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
+end get_decena_to_numero;
+
+--!convertir numero a string de decena 
+function get_numero_to_decena(pv_numero		varchar2) return varchar2 is
+	LV$PROCEDURE_NAME       	constant varchar2(30) := 'get_numero_to_decena';	
+begin
+	if pv_numero = '1' then
+		return '1-9';
+	elsif pv_numero = '2' then
+		return '10-19';
+	elsif pv_numero = '3' then
+		return '20-29';
+	elsif pv_numero = '4' then
+		return '30-39';
+	end if;
+exception
+	when others then
+		return -1;
+		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
+end get_numero_to_decena;
+
+--!convertir digito a string de decena 
+function get_digito_to_decena(pn_numero		number) return varchar2 is
+	LV$PROCEDURE_NAME       	constant varchar2(30) := 'get_digito_to_decena';	
+begin
+	if pn_numero between 1 and 9 then
+		return '1-9';
+	elsif pn_numero between 10 and 19 then
+		return '10-19';
+	elsif pn_numero between 20 and 29 then
+		return '20-29';
+	elsif pn_numero between 30 and 39 then
+		return '30-39';
+	end if;
+exception
+	when others then
+		return -1;
+		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
+end get_digito_to_decena;
+
+--!convertir el digito a numero one-hot encoded
+function get_digito_to_numero(pn_numero		number) return number is
+	LV$PROCEDURE_NAME       	constant varchar2(30) := 'get_digito_to_numero';	
+begin
+	if pn_numero between 1 and 9 then
+		return 1;
+	elsif pn_numero between 10 and 19 then
+		return 2;
+	elsif pn_numero between 20 and 29 then
+		return 3;
+	elsif pn_numero between 30 and 39 then
+		return 4;
+	end if;
+exception
+	when others then
+		return -1;
+		dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());		
+end get_digito_to_numero;
+
+--!transformar los valores que vienen de la predicciones
+function transformar_valor_posicion(pv_tipo		varchar2
+								  , pv_pred		varchar2) return varchar2 is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'transformar_valor_posicion'; 
+	lv$valor_transformado		  VARCHAR2(10);
+begin
+	if instr(upper(pv_tipo),'FR') > 0 or instr(upper(pv_tipo),'LT') > 0 then
+		select case when instr(pv_tipo,'LT') > 0 or instr(pv_tipo,'FR') > 0 then decode(pv_pred,'1','R','2','G','3','B') else pv_pred end
+		  into lv$valor_transformado
+		  from dual;
+	elsif instr(upper(pv_tipo),'DECENA') > 0  then
+		lv$valor_transformado := olap_sys.w_common_pkg.get_numero_to_decena(pv_pred);
+	else
+		lv$valor_transformado := pv_pred;
+	end if;
+	
+	return lv$valor_transformado;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end transformar_valor_posicion;	
+
 end w_common_pkg;
 /
 show errors;

@@ -19,7 +19,7 @@ select drawing_id id
 	 , case when pronos_ciclo is null and preferencia_flag is null then 0
 		    when pronos_ciclo is null and preferencia_flag is not null then 1
 		    when pronos_ciclo is not null and preferencia_flag is null then 2
-		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref
+		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref		
   from olap_sys.s_calculo_stats
  where drawing_id = pn_drawing_id
  order by b_type, digit;
@@ -30,7 +30,7 @@ select list_id
   from olap_sys.gl_automaticas_header ah
  where stop_date is null; 
 
-					 
+				 
 --!handler para insertar jugadas en la tabla GL_AUTOMATICAS_DETAIL
 procedure ins_gl_automaticas_handler(pv_gambling_type		varchar2 default 'mrtr'
 								   , pn_id					number
@@ -93,6 +93,9 @@ procedure digit_counts_handler(pn_drawing_id		number);
 
 --!mostrar las predicciones para cada b_type para el ultimo sorteo
 procedure comparativo_lt_handler;
+
+--!insertar y actualizar el historico de digitos en base al id del sorteo
+procedure history_digit_info_handler(pn_drawing_id		number);
 
 end w_gl_automaticas_pkg;
 /
