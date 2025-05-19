@@ -1454,8 +1454,8 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 				ins_mr_resultados (pn_gambling_id => i.gambling_id);
 								
 				--!actualizar la informacion de gl como frecuencia, ley del tercio, ciclo aparicion asi como numero de sorteo, etc
-				w_gl_automaticas_pkg.upd_gl_automaticas_handler(pn_drawing_id => i.gambling_id
-															  , pv_ca_comb_flag => 'Y');
+				w_gl_automaticas_pkg.upd_gl_automaticas_handler(pn_drawing_id => i.gambling_id);
+				
 				--!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
 				w_gl_automaticas_pkg.aciertos_repetidos_handler(pn_drawing_id => i.gambling_id);
 
@@ -1473,7 +1473,16 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 				
 				--!insertar y actualizar el historico de digitos en base al id del sorteo
 				olap_sys.w_gl_automaticas_pkg.history_digit_info_handler(pn_drawing_id => i.gambling_id);
-				
+
+				--!actualizar la tabla gl_position_counts con los datos del sorteo ganador
+				olap_sys.w_gl_automaticas_pkg.upd_gl_pos_counts_handler(pn_drawing_id => i.gambling_id
+																	  , pn_comb1 => i.comb1
+																	  , pn_comb2 => i.comb2
+																	  , pn_comb3 => i.comb3
+																	  , pn_comb4 => i.comb4
+																	  , pn_comb5 => i.comb5
+																	  , pn_comb6 => i.comb6);
+						 
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;
 	           end if;

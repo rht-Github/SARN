@@ -19,6 +19,7 @@ import numpy as np
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GridSearchCV
+import gl_dataset_handler as dh
 import warnings
 
 #valores contantes
@@ -94,9 +95,9 @@ def create_gl_dataframe (sorteo_id:int, sorteo_base:int=0):
 			query_stmt = query_stmt + " , COLOR_UBICACION FR"
 			query_stmt = query_stmt + " , NVL(CICLO_APARICION,3) CA"
 			query_stmt = query_stmt + " , CASE WHEN PRONOS_CICLO IS NOT NULL THEN 1 ELSE 0 END PXC"
-			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 1 AND INPAR_NUMBER_FLAG IN (0,1) THEN 1 ELSE 0 END PRIMO"
-			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 1 THEN 1 ELSE 0 END IMPAR"
-			query_stmt = query_stmt + " , CASE WHEN PRIME_NUMBER_FLAG = 0 AND INPAR_NUMBER_FLAG = 0 THEN 1 ELSE 0 END PAR"
+			query_stmt = query_stmt + " , PRIME_NUMBER_FLAG PRIMO"
+			query_stmt = query_stmt + " , INPAR_NUMBER_FLAG IMPAR"
+			query_stmt = query_stmt + " , PAR_NUMBER_FLAG PAR"
 			query_stmt = query_stmt + " , CASE WHEN CHNG_POSICION IS NULL THEN 0 ELSE 1 END CHNG"
 			query_stmt = query_stmt + " , OLAP_SYS.W_COMMON_PKG.GET_DIGITO_TO_NUMERO(DIGIT) DECENA"
 			if sorteo_base > 0:
@@ -173,6 +174,7 @@ def create_gl_dataframe_pip(sorteo_id: int = 0):
     finally:
         conn.close()  # Cerrar la conexión
 
+
 # Crear el dataframe con la info del histórico de los sorteos basado el conteo de terminaciones
 def create_gl_dataframe_terminaciones(sorteo_id: int = 0):
     try:
@@ -215,6 +217,43 @@ def create_gl_dataframe_terminaciones(sorteo_id: int = 0):
             cursor.close()  # Asegurarse de cerrar el cursor
     finally:
         conn.close()  # Cerrar la conexión
+
+#Crear el dataframe con la info del histórico de los sorteos basado en una vista que solo muestra numeros
+def create_gl_dataframe_generic(qry_type: int = 1):
+    try:
+        # Formando el string de conexión
+        str_conn = DB_USER + "/" + DB_PWD + "@//" + DB_HOST + ":" + DB_PORT + "/" + DB_SERVICE
+        # Conectando a la base de datos
+        conn = cx_Oracle.connect(str_conn)
+    except Exception as err:
+        print('Exception while creating a Oracle connection', err)
+        return None
+    else:
+        try:
+            # frecuencia
+            if qry_type == 1:
+                query_stmt = "SELECT GAMBLING_ID ID, CU1, CU2, CU3, CU4, CU5, CU6"
+
+            # ley del tercio
+            elif qry_type == 2:
+                query_stmt = "SELECT GAMBLING_ID ID, CLT1, CLT2, CLT3, CLT4, CLT5, CLT6"
+
+            query_stmt += " FROM OLAP_SYS.MR_RESULTADOS_NUM_V"
+            query_stmt += " ORDER BY GAMBLING_ID"
+
+            cursor = conn.cursor()
+            cursor.execute(query_stmt)
+            # Convirtiendo el resultset en un DataFrame de Pandas
+            columns = ['ID', 'POS1', 'POS2', 'POS3', 'POS4', 'POS5', 'POS6']  # Nombres de columnas
+            df = pd.DataFrame(cursor.fetchall(), columns=columns)
+            return df
+        except Exception as err:
+            print('Exception raised while executing the query', err)
+            return None
+        finally:
+            cursor.close()  # Asegurarse de cerrar el cursor
+            conn.close()  # Cerrar la conexión
+
 
 
 #prediccion ley del tercio
@@ -4153,26 +4192,23 @@ def prediccion_terminaciones(df, label, sorteo_id, posicion, prediccion_dic, nom
 		# Determinar el siguiente sorteo basado en ID
 		siguiente_sorteo = df['ID'].max() + 1
 
-		if posicion == 1:
-			feature_columns = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 2:
-			feature_columns = ['T1', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 3:
-			feature_columns = ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 4:
-			feature_columns = ['T1', 'T2', 'T3', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 5:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T6', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 6:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T5', 'T7', 'T8', 'T9', 'T0']
-		if posicion == 7:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8', 'T9', 'T0']
-		if posicion == 8:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T9', 'T0']
-		if posicion == 9:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T0']
-		if posicion == 10:
-			feature_columns = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9']
+		# Select features based on position
+		feature_columns_options = {
+			1: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			2: ['T1', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			3: ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			4: ['T1', 'T2', 'T3', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			5: ['T1', 'T2', 'T3', 'T4', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			6: ['T1', 'T2', 'T3', 'T4', 'T5', 'T7', 'T8', 'T9', 'T0'],
+			7: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8', 'T9', 'T0'],
+			8: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T9', 'T0'],
+			9: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T0'],
+			10: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9']
+		}
+
+		feature_columns = feature_columns_options.get(posicion)
+		if not feature_columns:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 10.")
 
 		X = df[feature_columns]  # Features
 		y = df[label]  # Label
@@ -4284,20 +4320,485 @@ def prediccion_terminaciones(df, label, sorteo_id, posicion, prediccion_dic, nom
 		raise
 
 
-def prediccion_terminaciones_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, epochs=50):
-    try:
-        # Determine the next draw number based on GAMBLING_ID
-        siguiente_sorteo = df['GAMBLING_ID'].max() + 1
+#calculo de predicciones basadas en termnaciones
+def prediccion_terminaciones_tf(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, n_splits=N_SPLITS,
+								epochs=EPOCHS):
+	try:
+		# Determine the next draw number based on GAMBLING_ID
+		siguiente_sorteo = df['ID'].max() + 1
 
-        # 1. Separate features and label
-        feature_columns = ['T0', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9']
+		# Select features based on position
+		feature_columns_options = {
+			1: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			2: ['T1', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			3: ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			4: ['T1', 'T2', 'T3', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			5: ['T1', 'T2', 'T3', 'T4', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			6: ['T1', 'T2', 'T3', 'T4', 'T5', 'T7', 'T8', 'T9', 'T0'],
+			7: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8', 'T9', 'T0'],
+			8: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T9', 'T0'],
+			9: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T0'],
+			10: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9']
+		}
+
+		feature_columns = feature_columns_options.get(posicion)
+		if not feature_columns:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 10.")
+
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label (expected values range from 0 to 6)
+
+		# Preprocessing pipeline: scale numeric features
+		preprocessor = ColumnTransformer(
+			transformers=[('num', StandardScaler(), feature_columns)]
+		)
+		X = preprocessor.fit_transform(X)
+
+		# Initialize KFold
+		kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+		accuracies = []
+
+		for train_index, val_index in kf.split(X):
+			X_train, X_val = X[train_index], X[val_index]
+			y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+
+			# Build a neural network model
+			model = tf.keras.Sequential([
+				tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
+				tf.keras.layers.Dense(128, activation='relu'),
+				tf.keras.layers.Dense(64, activation='relu'),
+				tf.keras.layers.Dense(7, activation='softmax')  # Softmax for 7 classes (0 to 6)
+			])
+
+			# Compile the model
+			model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+			# Train the model
+			model.fit(X_train, y_train, epochs=epochs, batch_size=32, validation_data=(X_val, y_val), verbose=0)
+
+			# Evaluate accuracy on validation data
+			y_val_pred_prob = model.predict(X_val)
+			y_val_pred = y_val_pred_prob.argmax(axis=1)
+			precision_score = accuracy_score(y_val, y_val_pred)
+			accuracies.append(precision_score)
+
+		# Average accuracy across folds
+		average_accuracy = np.mean(accuracies)
+
+		# Single prediction for the latest record in the dataset
+		nuevo_registro = X[-1:].reshape(1, -1)  # Last row for prediction
+		single_prediction_prob = model.predict(nuevo_registro)
+		valor_prediccion = single_prediction_prob.argmax(axis=1)[0]  # No need to add 1, as range is already 0 to 6
+
+		# Update predictions in the dictionary
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = "12.TERMINACIONES"
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		#prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+		prediccion_dic[f"prediccion_{posicion}"] = round(valor_prediccion)
+		prediccion_dic[f"precision_{posicion}"] = round(precision_score, 3)
+		prediccion_dic[f"siguiente_sorteo_{posicion}"] = round(siguiente_sorteo)
+
+		return prediccion_dic
+
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#calculo de predicciones basadas en termnaciones
+def prediccion_terminaciones_torch(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, n_splits=N_SPLITS,
+								epochs=EPOCHS):
+	try:
+		# Determine the next draw number based on GAMBLING_ID
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# Select features based on position
+		feature_columns_options = {
+			1: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			2: ['T1', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			3: ['T1', 'T2', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			4: ['T1', 'T2', 'T3', 'T5', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			5: ['T1', 'T2', 'T3', 'T4', 'T6', 'T7', 'T8', 'T9', 'T0'],
+			6: ['T1', 'T2', 'T3', 'T4', 'T5', 'T7', 'T8', 'T9', 'T0'],
+			7: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T8', 'T9', 'T0'],
+			8: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T9', 'T0'],
+			9: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T0'],
+			10: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9']
+		}
+
+		feature_columns = feature_columns_options.get(posicion)
+		if not feature_columns:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 10.")
+
+		X = df[feature_columns].values
+		y = df[label].values
+
+		# Escalar características
+		scaler = StandardScaler()
+		X = scaler.fit_transform(X)
+
+		# Dividir datos en entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+		# Convertir datos a tensores
+		X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+		y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
+		X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+		y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
+
+		# Crear DataLoader para el conjunto de entrenamiento
+		train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+		train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+		# Definir la red neuronal
+		class MultiClassModel(nn.Module):
+			def __init__(self, input_dim):
+				super(MultiClassModel, self).__init__()
+				self.fc1 = nn.Linear(input_dim, 64)
+				self.fc2 = nn.Linear(64, 32)
+				self.fc3 = nn.Linear(32, 1)
+
+			def forward(self, x):
+				x = torch.relu(self.fc1(x))
+				x = torch.relu(self.fc2(x))
+				return self.fc3(x)
+
+		# Inicializar el modelo
+		model = MultiClassModel(input_dim=X_train.shape[1])
+		criterion = nn.CrossEntropyLoss()  # Para clasificación multiclase
+		optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+		# Entrenar el modelo
+		for epoch in range(epochs):
+			model.train()
+			for batch_X, batch_y in train_loader:
+				outputs = model(batch_X)
+				loss = criterion(outputs, batch_y)
+
+				optimizer.zero_grad()
+				loss.backward()
+				optimizer.step()
+
+		# Evaluar el modelo
+		model.eval()
+		with torch.no_grad():
+			y_pred = model(X_test_tensor).argmax(dim=1)  # Seleccionar la clase con mayor probabilidad
+			precision_score = accuracy_score(y_test_tensor.numpy(), y_pred.numpy())
+			#precision_score = accuracy_score(y_test_tensor.numpy(), y_pred.numpy().squeeze())
+
+		# Predecir para el siguiente registro
+		nuevo_registro = torch.tensor(scaler.transform(X[-1].reshape(1, -1)), dtype=torch.float32)
+		with torch.no_grad():
+			valor_prediccion = model(nuevo_registro).argmax(dim=1).item()
+			#si la funcion continua calculando 0 para todos los labels entonces probar la siguiente linea
+			#valor_prediccion = model(nuevo_registro).item()
+
+		print(f'valor_prediccion: {valor_prediccion}, precision_score: {precision_score}')
+
+		# Update predictions in the dictionary
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = "12.TERMINACIONES"
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		#prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+		prediccion_dic[f"prediccion_{posicion}"] = round(valor_prediccion)
+		prediccion_dic[f"precision_{posicion}"] = round(precision_score, 3)
+		prediccion_dic[f"siguiente_sorteo_{posicion}"] = round(siguiente_sorteo)
+
+		return prediccion_dic
+
+	except ValueError as ve:
+		print(f"Error de validación: {ve}")
+		raise
+
+	except Exception as e:
+		print(f"Error inesperado: {e}")
+		raise
+
+
+#calculo de predicciones basadas en entradas genericas
+def prediccion_generic(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, generic_option_name, n_splits=N_SPLITS):
+	try:
+		# Determinar el siguiente sorteo basado en ID
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# Select features based on position
+		feature_columns_options = {
+			1: ['POS2', 'POS3', 'POS4', 'POS5', 'POS6'],
+			2: ['POS1', 'POS3', 'POS4', 'POS5', 'POS6'],
+			3: ['POS1', 'POS2', 'POS4', 'POS5', 'POS6'],
+			4: ['POS1', 'POS2', 'POS3', 'POS5', 'POS6'],
+			5: ['POS1', 'POS2', 'POS3', 'POS4', 'POS6'],
+			6: ['POS1', 'POS2', 'POS3', 'POS4', 'POS5']
+		}
+
+		feature_columns = feature_columns_options.get(posicion)
+		if not feature_columns:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 6.")
+
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Validación cruzada
+		if not isinstance(n_splits, int) or n_splits <= 2:
+			raise ValueError("n_splits debe ser un entero mayor o igual a 2.")
+
+		# Validación cruzada
+		kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+		accuracies = []
+
+		for train_index, val_index in kf.split(X):
+			X_train, X_val = X.iloc[train_index], X.iloc[val_index]
+			y_train, y_val = y.iloc[train_index], y.iloc[val_index]
+
+			if nombre_algoritmo == "log_reg":
+				# Inicializar y entrenar Logistic Regression
+				log_reg = LogisticRegression(max_iter=300, random_state=42)
+				log_reg.fit(X_train, y_train)
+
+				# Realizar predicciones en el conjunto de validación
+				log_reg_pred = log_reg.predict(X_val)
+
+				# Calcular la precisión
+				precision_score = accuracy_score(y_val, log_reg_pred)
+				accuracies.append(precision_score)
+
+				# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+				nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+				valor_prediccion = log_reg.predict(nuevo_registro)
+
+			elif nombre_algoritmo == "rf":
+				# Inicializar y entrenar Random Forest Classifier
+				rf_clf = RandomForestClassifier(random_state=42)
+				rf_clf.fit(X_train, y_train)
+
+				# Realizar predicciones en el conjunto de validación
+				rf_clf_pred = rf_clf.predict(X_val)
+
+				# Calcular la precisión
+				precision_score = accuracy_score(y_val, rf_clf_pred)
+				accuracies.append(precision_score)
+
+				# Suponer que se tiene un nuevo registro similar al último del conjunto de datos
+				nuevo_registro = X.iloc[-1].values.reshape(1, -1)
+				valor_prediccion = rf_clf.predict(nuevo_registro)
+
+			# Validar que valor_prediccion esté en el rango permitido
+			valor_prediccion = np.clip(valor_prediccion, 1, 3)
+
+		# Promedio de precisión entre pliegues
+		average_accuracy = np.mean(accuracies)
+
+		# Actualizar las predicciones en el diccionario
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = generic_option_name
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		#prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+		#prediccion_dic["valor_prediccion"] = int(valor_prediccion[0])
+
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion[0])
+			prediccion_dic['precision_1'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion[0])
+			prediccion_dic['precision_2'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion[0])
+			prediccion_dic['precision_3'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion[0])
+			prediccion_dic['precision_4'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion[0])
+			prediccion_dic['precision_5'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion[0])
+			prediccion_dic['precision_6'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		if posicion == 7:
+			prediccion_dic['prediccion_7'] = round(valor_prediccion[0])
+			prediccion_dic['precision_7'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_7"] = round(siguiente_sorteo)
+		if posicion == 8:
+			prediccion_dic['prediccion_8'] = round(valor_prediccion[0])
+			prediccion_dic['precision_8'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_8"] = round(siguiente_sorteo)
+		if posicion == 9:
+			prediccion_dic['prediccion_9'] = round(valor_prediccion[0])
+			prediccion_dic['precision_9'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_9"] = round(siguiente_sorteo)
+		if posicion == 10:
+			prediccion_dic['prediccion_0'] = round(valor_prediccion[0])
+			prediccion_dic['precision_0'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_0"] = round(siguiente_sorteo)
+
+		return prediccion_dic
+
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+
+#prediccion generica de ley del tercio en base a tensorflow
+def prediccion_tf_generic(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, generic_option_name):
+	try:
+		siguiente_sorteo = df['ID'].max() + 1
+
+		# Select features based on position
+		feature_columns_options = {
+			1: ['POS2', 'POS3', 'POS4', 'POS5', 'POS6'],
+			2: ['POS1', 'POS3', 'POS4', 'POS5', 'POS6'],
+			3: ['POS1', 'POS2', 'POS4', 'POS5', 'POS6'],
+			4: ['POS1', 'POS2', 'POS3', 'POS5', 'POS6'],
+			5: ['POS1', 'POS2', 'POS3', 'POS4', 'POS6'],
+			6: ['POS1', 'POS2', 'POS3', 'POS4', 'POS5']
+		}
+
+		feature_columns = feature_columns_options.get(posicion)
+		if not feature_columns:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 6.")
+
+		X = df[feature_columns]  # Features
+		y = df[label]  # Label
+
+		# Estandarizar las características
+		scaler = StandardScaler()
+		X_scaled = scaler.fit_transform(X)
+
+		# Dividir los datos en entrenamiento y prueba
+		X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+		# Convertir las etiquetas a formato categórico
+		y_train_categorical = tf.keras.utils.to_categorical(y_train - 1, num_classes=3)
+		y_test_categorical = tf.keras.utils.to_categorical(y_test - 1, num_classes=3)
+
+		# Crear el modelo de TensorFlow
+		model = tf.keras.Sequential([
+			tf.keras.layers.Dense(16, activation='relu', input_shape=(X_train.shape[1],)),
+			tf.keras.layers.Dense(8, activation='relu'),
+			tf.keras.layers.Dense(3, activation='softmax')
+		])
+
+		# Compilar el modelo
+		model.compile(optimizer='adam',
+					  loss='categorical_crossentropy',
+					  metrics=['accuracy'])
+
+		# Entrenar el modelo
+		history = model.fit(X_train, y_train_categorical, epochs=EPOCHS, batch_size=8, verbose=0,
+				  validation_data=(X_test, y_test_categorical))
+
+		# Calcular la precisión en el conjunto de prueba
+		test_loss, precision_score = model.evaluate(X_test, y_test_categorical, verbose=0)
+
+		# Preparar el nuevo registro para predecir (ID 645)
+		nuevo_registro = df[feature_columns].iloc[-1:].values
+		nuevo_registro = scaler.transform(nuevo_registro)
+
+		# Hacer la predicción
+		prediccion = model.predict(nuevo_registro)
+		valor_prediccion = np.argmax(prediccion) + 1
+
+		# Actualizar las predicciones en el diccionario
+		prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
+		prediccion_dic["prediccion_tipo"] = generic_option_name
+		prediccion_dic["prediccion_sorteo"] = sorteo_id
+		#prediccion_dic["precision_promedio"] = round(average_accuracy, 3)
+		#prediccion_dic["valor_prediccion"] = int(valor_prediccion[0])
+
+		if posicion == 1:
+			prediccion_dic['prediccion_1'] = round(valor_prediccion)
+			prediccion_dic['precision_1'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_1"] = round(siguiente_sorteo)
+		if posicion == 2:
+			prediccion_dic['prediccion_2'] = round(valor_prediccion)
+			prediccion_dic['precision_2'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_2"] = round(siguiente_sorteo)
+		if posicion == 3:
+			prediccion_dic['prediccion_3'] = round(valor_prediccion)
+			prediccion_dic['precision_3'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
+		if posicion == 4:
+			prediccion_dic['prediccion_4'] = round(valor_prediccion)
+			prediccion_dic['precision_4'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+		if posicion == 5:
+			prediccion_dic['prediccion_5'] = round(valor_prediccion)
+			prediccion_dic['precision_5'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+		if posicion == 6:
+			prediccion_dic['prediccion_6'] = round(valor_prediccion)
+			prediccion_dic['precision_6'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
+		if posicion == 7:
+			prediccion_dic['prediccion_7'] = round(valor_prediccion)
+			prediccion_dic['precision_7'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_7"] = round(siguiente_sorteo)
+		if posicion == 8:
+			prediccion_dic['prediccion_8'] = round(valor_prediccion)
+			prediccion_dic['precision_8'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_8"] = round(siguiente_sorteo)
+		if posicion == 9:
+			prediccion_dic['prediccion_9'] = round(valor_prediccion)
+			prediccion_dic['precision_9'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_9"] = round(siguiente_sorteo)
+		if posicion == 10:
+			prediccion_dic['prediccion_0'] = round(valor_prediccion)
+			prediccion_dic['precision_0'] = round(precision_score, 3)
+			prediccion_dic["siguiente_sorteo_0"] = round(siguiente_sorteo)
+
+		return prediccion_dic
+
+	except ValueError as ve:
+		print(f"Error de valor: {ve}")
+		raise
+	except Exception as e:
+		print(f"Ocurrió un error durante el procesamiento: {e}")
+		raise
+
+
+#prediccion ley del tercio en base a torch
+def prediccion_torch_generic(df, label, sorteo_id, posicion, prediccion_dic, nombre_algoritmo, generic_option_name, epochs=EPOCHS):
+    try:
+        siguiente_sorteo = df['ID'].max() + 1
+
+        # Select features based on position
+        feature_columns_options = {
+            1: ['POS2', 'POS3', 'POS4', 'POS5', 'POS6'],
+            2: ['POS1', 'POS3', 'POS4', 'POS5', 'POS6'],
+            3: ['POS1', 'POS2', 'POS4', 'POS5', 'POS6'],
+            4: ['POS1', 'POS2', 'POS3', 'POS5', 'POS6'],
+            5: ['POS1', 'POS2', 'POS3', 'POS4', 'POS6'],
+            6: ['POS1', 'POS2', 'POS3', 'POS4', 'POS5']
+        }
+
+        feature_columns = feature_columns_options.get(posicion)
+        if not feature_columns:
+            raise ValueError("Posición no válida. Debe estar entre 1 y 6.")
+
         X = df[feature_columns]  # Features
         y = df[label]  # Label
 
-        # Preprocessing pipeline: scale numeric features
+        # Preprocessing for scaling
+        numeric_features = feature_columns
+
+        # Create preprocessing pipeline for scaling numeric features
         preprocessor = ColumnTransformer(
-            transformers=[('num', StandardScaler(), feature_columns)]
-        )
+            transformers=[
+                ('num', StandardScaler(), [feature_columns.index(f) for f in numeric_features])
+            ])
 
         # Split data into training and test sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -4306,33 +4807,75 @@ def prediccion_terminaciones_tf(df, label, sorteo_id, posicion, prediccion_dic, 
         X_train = preprocessor.fit_transform(X_train)
         X_test = preprocessor.transform(X_test)
 
-        # Build a neural network model for binary classification
-        model = tf.keras.Sequential([
-            tf.keras.layers.InputLayer(input_shape=(X_train.shape[1],)),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(1, activation='sigmoid')  # Sigmoid for binary classification
-        ])
+        # Ensure labels are within bounds for PyTorch (0, 1, 2)
+        if y_train.min() < 2 or y_test.min() < 2:
+            raise ValueError("Labels must be 1, 2, or 3.")
 
-        # Compile the model
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        # Convert labels to range starting from 0 (PyTorch expects classes starting from 0)
+        y_train = y_train - 1
+        y_test = y_test - 1
 
-        # Train the model
-        model.fit(X_train, y_train, epochs=epochs, batch_size=32, validation_split=0.1, verbose=1)
+        # Convert data to PyTorch tensors
+        X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+        y_train_tensor = torch.tensor(y_train.values, dtype=torch.long)
+        X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+        y_test_tensor = torch.tensor(y_test.values, dtype=torch.long)
 
-        # Evaluate the model on the test set
-        test_loss, precision_score = model.evaluate(X_test, y_test, verbose=0)
+        # Create DataLoader for training data
+        train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
-        # Predict for the latest record in the dataset (simulate next prediction)
-        nuevo_registro = X.iloc[-1].values.reshape(1, -1)
-        nuevo_registro_scaled = preprocessor.transform(nuevo_registro)
-        valor_prediccion_prob = model.predict(nuevo_registro_scaled)
-        valor_prediccion = (valor_prediccion_prob > 0.5).astype(int)[0][0]  # Convert to binary 0 or 1
+        # Define the neural network model
+        class NeuralNet(nn.Module):
+            def __init__(self, input_dim, output_dim):
+                super(NeuralNet, self).__init__()
+                self.fc1 = nn.Linear(input_dim, 64)
+                self.fc2 = nn.Linear(64, 32)
+                self.fc3 = nn.Linear(32, output_dim)
 
-        # Update predictions in the dictionary
+            def forward(self, x):
+                x = torch.relu(self.fc1(x))
+                x = torch.relu(self.fc2(x))
+                x = torch.softmax(self.fc3(x), dim=1)
+                return x
+
+        # Instantiate the model, loss function, and optimizer
+        model = NeuralNet(X_train.shape[1], 3)  # 3 classes for output (1, 2, 3)
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        # Training loop
+        model.train()
+        for epoch in range(epochs):
+            for batch_X, batch_y in train_loader:
+                # Forward pass
+                outputs = model(batch_X)
+                loss = criterion(outputs, batch_y)
+
+                # Backward pass and optimization
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+        # Evaluate the model on test data
+        model.eval()
+        with torch.no_grad():
+            y_pred_prob = model(X_test_tensor)
+            y_pred = torch.argmax(y_pred_prob, dim=1).numpy()
+
+        # Calculate accuracy
+        precision_score = accuracy_score(y_test, y_pred)
+
+        # Single prediction for the latest record in the dataset
+        X_latest = X_test_tensor[-1].unsqueeze(0)  # Assuming you want the prediction for the last test instance
+        with torch.no_grad():
+            valor_prediccion_prob = model(X_latest)
+            valor_prediccion = torch.argmax(valor_prediccion_prob, dim=1).item() + 1  # Add 1 to match original labels (1, 2, 3)
+
+        # Update prediction dictionary
         prediccion_dic['nombre_algoritmo'] = nombre_algoritmo
-        prediccion_dic["prediccion_tipo"] = "4." + label
-        prediccion_dic["prediccion_sorteo"] = siguiente_sorteo
+        prediccion_dic["prediccion_tipo"] = generic_option_name
+        prediccion_dic["prediccion_sorteo"] = sorteo_id
 
         if posicion == 1:
             prediccion_dic['prediccion_1'] = round(valor_prediccion)
@@ -4346,15 +4889,23 @@ def prediccion_terminaciones_tf(df, label, sorteo_id, posicion, prediccion_dic, 
             prediccion_dic['prediccion_3'] = round(valor_prediccion)
             prediccion_dic['precision_3'] = round(precision_score, 3)
             prediccion_dic["siguiente_sorteo_3"] = round(siguiente_sorteo)
-
+        if posicion == 4:
+            prediccion_dic['prediccion_4'] = round(valor_prediccion)
+            prediccion_dic['precision_4'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_4"] = round(siguiente_sorteo)
+        if posicion == 5:
+            prediccion_dic['prediccion_5'] = round(valor_prediccion)
+            prediccion_dic['precision_5'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_5"] = round(siguiente_sorteo)
+        if posicion == 6:
+            prediccion_dic['prediccion_6'] = round(valor_prediccion)
+            prediccion_dic['precision_6'] = round(precision_score, 3)
+            prediccion_dic["siguiente_sorteo_6"] = round(siguiente_sorteo)
         return prediccion_dic
 
-    except ValueError as ve:
-        print(f"Error de valor: {ve}")
-        raise
     except Exception as e:
-        print(f"Ocurrió un error durante el procesamiento: {e}")
-        raise
+        print(f"Error in prediccion_torch_generic: {e}")
+        return None
 
 
 # Chequear y visualizar NaNs en el DataFrame
@@ -4374,87 +4925,6 @@ def check_nans(df) -> int:
 		return 1
 	else:
 		return 0
-
-
-#ejecutar procedimiento de base de datos para guardar la info de las predicciones
-def ejecutar_procedimiento(prediccion_info, ejecucion_tipo:str="short"):
-
-	try:
-		# conectando a la base de datos
-		str_conn = DB_USER + "/" + DB_PWD + "@//" + DB_HOST + ":" + DB_PORT + "/" + DB_SERVICE
-		conn = cx_Oracle.connect(str_conn)
-	except Exception as err:
-		print('Exception while creating a oracle connection', err)
-	else:
-		try:
-			cursor = conn.cursor()
-
-			if ejecucion_tipo == "short":
-				# Llamar al procedimiento almacenado con dos parámetros de tipo cadena
-				cursor.callproc('W_GL_AUTOMATICAS_PKG.PREDICCIONES_ALL_HANDLER', [prediccion_info["nombre_algoritmo"],
-																				  prediccion_info["prediccion_sorteo"],
-																				  prediccion_info["prediccion_tipo"],
-																				  prediccion_info["siguiente_sorteo_1"],
-																				  prediccion_info["prediccion_1"],
-																				  prediccion_info["precision_1"],
-																				  prediccion_info["siguiente_sorteo_2"],
-																				  prediccion_info["prediccion_2"],
-																				  prediccion_info["precision_2"],
-																				  prediccion_info["siguiente_sorteo_3"],
-																				  prediccion_info["prediccion_3"],
-																				  prediccion_info["precision_3"],
-																				  prediccion_info["siguiente_sorteo_4"],
-																				  prediccion_info["prediccion_4"],
-																				  prediccion_info["precision_4"],
-																				  prediccion_info["siguiente_sorteo_5"],
-																				  prediccion_info["prediccion_5"],
-																				  prediccion_info["precision_5"],
-																				  prediccion_info["siguiente_sorteo_6"],
-																				  prediccion_info["prediccion_6"],
-																				  prediccion_info["precision_6"]])
-			else:
-				# Llamar al procedimiento almacenado con dos parámetros de tipo cadena
-				cursor.callproc('W_GL_AUTOMATICAS_PKG.PREDICCIONES_ALL_HANDLER', [prediccion_info["nombre_algoritmo"],
-																				  prediccion_info["prediccion_sorteo"],
-																				  prediccion_info["prediccion_tipo"],
-																				  prediccion_info["siguiente_sorteo_1"],
-																				  prediccion_info["prediccion_1"],
-																				  prediccion_info["precision_1"],
-																				  prediccion_info["siguiente_sorteo_2"],
-																				  prediccion_info["prediccion_2"],
-																				  prediccion_info["precision_2"],
-																				  prediccion_info["siguiente_sorteo_3"],
-																				  prediccion_info["prediccion_3"],
-																				  prediccion_info["precision_3"],
-																				  prediccion_info["siguiente_sorteo_4"],
-																				  prediccion_info["prediccion_4"],
-																				  prediccion_info["precision_4"],
-																				  prediccion_info["siguiente_sorteo_5"],
-																				  prediccion_info["prediccion_5"],
-																				  prediccion_info["precision_5"],
-																				  prediccion_info["siguiente_sorteo_6"],
-																				  prediccion_info["prediccion_6"],
-																				  prediccion_info["precision_6"],
-																				  prediccion_info["siguiente_sorteo_7"],
-																				  prediccion_info["prediccion_7"],
-																				  prediccion_info["precision_7"],
-																				  prediccion_info["siguiente_sorteo_8"],
-																				  prediccion_info["prediccion_8"],
-																				  prediccion_info["precision_8"],
-																				  prediccion_info["siguiente_sorteo_9"],
-																				  prediccion_info["prediccion_9"],
-																				  prediccion_info["precision_9"],
-																				  prediccion_info["siguiente_sorteo_0"],
-																				  prediccion_info["prediccion_0"],
-																				  prediccion_info["precision_0"]])
-		except Exception as err:
-			print('Exception raised while executing the procedure', err)
-		finally:
-			# Cerrar el cursor
-			cursor.close()
-	finally:
-		# Cerrar la conexion
-		conn.close()
 
 
 #proceso encargado de ejecutar todos los modelos de prediccion
@@ -4521,7 +4991,7 @@ def procesa_predicciones(df, nombre_algoritmo:str, label:str, id_base:int):
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 
 #proceso encargado de ejecutar todos los modelos de prediccion
@@ -4572,7 +5042,7 @@ def procesa_predicciones_2(df, nombre_algoritmo:str, label:str, id_base:int):
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 
 #proceso encargado de ejecutar todos los modelos de prediccion basados en tensorflow
@@ -4638,7 +5108,7 @@ def procesa_predicciones_tf(df, nombre_algoritmo:str, label:str, id_base:int):
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 
 #proceso encargado de ejecutar todos los modelos de prediccion basados en torch
@@ -4704,7 +5174,7 @@ def procesa_predicciones_torch(df, nombre_algoritmo:str, label:str, id_base:int)
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 
 #proceso encargado de ejecutar todos los modelos de prediccion
@@ -4783,10 +5253,11 @@ def procesa_predicciones_pip(df, nombre_algoritmo:str, id_base:int):
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl)
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 #proceso encargado de ejecutar todos los modelos de prediccion
 def procesa_predicciones_terminaciones(df, nombre_algoritmo:str, id_base:int):
+	#permite que se guarden los 10 valores de las predicciones
 	ejecucion_tipo = "long"
 
 	# arreglo para almacenar el valor de las predicciones por cada b_type
@@ -4827,46 +5298,35 @@ def procesa_predicciones_terminaciones(df, nombre_algoritmo:str, id_base:int):
 	}
 
 	for posicion in range(1,11):
-		if nombre_algoritmo in ("rf", "log_reg"):
-			if posicion == 1:
-				label = "T1"
-			if posicion == 2:
-				label = "T2"
-			if posicion == 3:
-				label = "T3"
-			if posicion == 4:
-				label = "T4"
-			if posicion == 5:
-				label = "T5"
-			if posicion == 6:
-				label = "T6"
-			if posicion == 7:
-				label = "T7"
-			if posicion == 8:
-				label = "T8"
-			if posicion == 9:
-				label = "T9"
-			if posicion == 10:
-				label = "T0"
+		# Select features based on position
+		label_options = {
+			1: ['T1'],
+			2: ['T2'],
+			3: ['T3'],
+			4: ['T4'],
+			5: ['T5'],
+			6: ['T6'],
+			7: ['T7'],
+			8: ['T8'],
+			9: ['T9'],
+			10: ['T0']
+		}
 
+		label = label_options.get(posicion)
+		if not label:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 10.")
+
+		if nombre_algoritmo in ("rf", "log_reg"):
 			# calculo de predicciones basadas en termnaciones
 			prediccion_terminaciones(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
 
+		if nombre_algoritmo == "tensorflow":
+			# Predicción de contador de números primos basados en tensorflow
+			prediccion_terminaciones_tf(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
 
-
-
-
-
-
-			"""
-			if nombre_algoritmo == "tensorflow":
-				# Predicción de contador de números primos basados en tensorflow
-				prediccion_primo_pip_tf(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
-
-			if nombre_algoritmo == "torch":
-				# Predicción de contador de números primos basados en torch
-				prediccion_primo_pip_torch(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
-			"""
+		if nombre_algoritmo == "torch":
+			# Predicción de contador de números primos basados en torch
+			prediccion_terminaciones_torch(df, label, id_base, posicion, prediccion_gl, nombre_algoritmo)
 
 		#ya que estan completas las predicciones de la jugada se imprimen
 		if posicion == 10:
@@ -4874,7 +5334,71 @@ def procesa_predicciones_terminaciones(df, nombre_algoritmo:str, id_base:int):
 
 	if GUARDA_PREDICCION:
 		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
-		ejecutar_procedimiento(prediccion_gl, ejecucion_tipo)
+		dh.ejecutar_procedimiento(prediccion_gl, ejecucion_tipo)
+
+
+#proceso encargado de ejecutar todos los modelos de prediccion
+def procesa_predicciones_generic(df_generic, nombre_algoritmo:str, id_base:int, generic_option_name:str):
+	# arreglo para almacenar el valor de las predicciones por cada b_type
+	prediccion_gl = {
+		"nombre_algoritmo": None,
+		"prediccion_tipo": None,
+		"prediccion_sorteo": 0,
+		"siguiente_sorteo_1": 0,
+		"prediccion_1": 0,
+		"precision_1": 0.0,
+		"siguiente_sorteo_2": 0,
+		"prediccion_2": 0,
+		"precision_2": 0.0,
+		"siguiente_sorteo_3": 0,
+		"prediccion_3": 0,
+		"precision_3": 0.0,
+		"siguiente_sorteo_4": 0,
+		"prediccion_4": 0,
+		"precision_4": 0.0,
+		"siguiente_sorteo_5": 0,
+		"prediccion_5": 0,
+		"precision_5": 0.0,
+		"siguiente_sorteo_6": 0,
+		"prediccion_6": 0,
+		"precision_6": 0.0,
+		"siguiente_sorteo_7": 0,
+		"prediccion_7": 0,
+		"precision_7": 0.0,
+		"siguiente_sorteo_8": 0,
+		"prediccion_8": 0,
+		"precision_8": 0.0,
+		"siguiente_sorteo_9": 0,
+		"prediccion_9": 0,
+		"precision_9": 0.0,
+		"siguiente_sorteo_0": 0,
+		"prediccion_0": 0,
+		"precision_0": 0.0
+	}
+
+	for posicion in range(1,7):
+		#defenicion del label
+		label = 'POS' + str(posicion)
+
+		if nombre_algoritmo in ("rf", "log_reg"):
+			# Predicción de contador de números primos basados en rf, log_reg
+			prediccion_generic(df_generic, label, id_base, posicion, prediccion_gl, nombre_algoritmo, generic_option_name)
+
+		if nombre_algoritmo == "tensorflow":
+			# prediccion generica de ley del tercio en base a tensorflow
+			prediccion_tf_generic(df_generic, label, id_base, posicion, prediccion_gl, nombre_algoritmo, generic_option_name)
+
+		if nombre_algoritmo == "torch":
+			# prediccion generica de ley del tercio en base a tensorflow
+			prediccion_torch_generic(df_generic, label, id_base, posicion, prediccion_gl, nombre_algoritmo, generic_option_name)
+
+		#ya que estan completas las predicciones de la jugada se imprimen
+		if posicion == 6:
+			print(prediccion_gl)
+
+	if GUARDA_PREDICCION:
+		# ejecutar procedimiento de base de datos para guardar la info de las predicciones
+		dh.ejecutar_procedimiento(prediccion_gl)
 
 
 def procesa_subtarea(id_base, df):
@@ -5084,6 +5608,7 @@ def procesa_subtarea_pip(id_base, df):
 	procesa_predicciones_pip(df, nombre_algoritmo, id_base)
 
 
+
 # proceso encargado de ejecutar los modelos de prediccion basados en el conteo de terminaciones
 def procesa_subtarea_terminaciones(id_base, df):
 	nombre_algoritmo = "log_reg"
@@ -5091,10 +5616,37 @@ def procesa_subtarea_terminaciones(id_base, df):
 	procesa_predicciones_terminaciones(df, nombre_algoritmo, id_base)
 	print("-------------------------------------")
 	nombre_algoritmo = "rf"
+	#proceso encargado
+	# de ejecutar todos los modelos de prediccion
+	procesa_predicciones_terminaciones(df, nombre_algoritmo, id_base)
+	print("-------------------------------------")
+	nombre_algoritmo = "tensorflow"
 	#proceso encargado de ejecutar todos los modelos de prediccion
 	procesa_predicciones_terminaciones(df, nombre_algoritmo, id_base)
+	#print("-------------------------------------")
+	#nombre_algoritmo = "torch"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	#procesa_predicciones_terminaciones(df, nombre_algoritmo, id_base)
 
 
+# proceso encargado de ejecutar los modelos de prediccion basados en el conteo de terminaciones
+def procesa_subtarea_generic(id_base, df_generic, generic_option_name):
+	nombre_algoritmo = "log_reg"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_generic(df_generic, nombre_algoritmo, id_base, generic_option_name)
+
+	nombre_algoritmo = "rf"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_generic(df_generic, nombre_algoritmo, id_base, generic_option_name)
+
+	nombre_algoritmo = "tensorflow"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_generic(df_generic, nombre_algoritmo, id_base, generic_option_name)
+	"""
+	nombre_algoritmo = "torch"
+	#proceso encargado de ejecutar todos los modelos de prediccion
+	procesa_predicciones_generic(df_generic, nombre_algoritmo, id_base, generic_option_name)
+	"""
 #proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
 def procesa_tarea(id_base):
 	#formar el dataframe con la info del histiroc
@@ -5149,6 +5701,54 @@ def procesa_tarea_terminaciones(id_base):
 		raise
 
 
+#proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
+#basado en el conteo de terminaciones
+def procesa_tarea_terminaciones(id_base):
+	#formar el dataframe con la info del histiroc
+	df= create_gl_dataframe_terminaciones(id_base)
+
+	# Chequear y visualizar NaNs en el DataFrame
+	nan_count = check_nans(df)
+
+	#si no hay valores nulos se procede a realizar la prediccion
+	if nan_count == 0:
+		# proceso encargado de ejecutar los modelos de prediccion basados en conteo de terminaciones
+		procesa_subtarea_terminaciones(id_base, df)
+	else:
+		print("Hay valores NaN en el dataset")
+		raise
+
+
+#proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
+#basado en un dataframe generico
+def procesa_tarea_genetic(id_base: int):
+	for gen_id in range (1,3):
+
+		# Select options based on position
+		generic_options = {
+			1: 'FR_GEN',
+			2: 'LT_GEN'
+		}
+
+		generic_option_name = str(gen_id) + '.' + generic_options.get(gen_id)
+		if not generic_option_name:
+			raise ValueError("Posición no válida. Debe estar entre 1 y 2.")
+
+		#formar el dataframe con la info del histiroc
+		df_generic= create_gl_dataframe_generic(gen_id)
+
+		# Chequear y visualizar NaNs en el DataFrame
+		nan_count = check_nans(df_generic)
+		
+		#si no hay valores nulos se procede a realizar la prediccion
+		if nan_count == 0:
+			# proceso encargado de ejecutar los modelos de prediccion basados en entradas genericas
+			procesa_subtarea_generic(id_base, df_generic, generic_option_name)
+		else:
+			print("Hay valores NaN en el dataset")
+			raise
+
+
 #funcion principal
 def main():
 	#recupera el maximo ID del sorteo que se va a jugar
@@ -5156,6 +5756,7 @@ def main():
 
 	# proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
 	procesa_tarea(id_base)
+
 	# proceso encargado de ejecutar el modelo de prediccion para el label preferencia_flag
 	procesa_tarea_sorteo_base(id_base)
 
@@ -5167,6 +5768,9 @@ def main():
 	#basado en el conteo de terminaciones
 	procesa_tarea_terminaciones(id_base)
 
+	#proceso encargado de ejecutar los modelos de prediccion basados en log_reg, rf
+	#basado en un dataframe generico
+	procesa_tarea_genetic(id_base)
 
 if __name__ == "__main__":
 	main()

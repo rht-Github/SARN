@@ -1183,6 +1183,14 @@ function transformar_valor_posicion(pv_tipo		varchar2
 --!convertir digito a string de decena 
 function get_digito_to_decena(pn_numero		number) return varchar2;
 								  
+--!regresar el rank de la combinacion de C1, C5 y C6								  
+function get_c1_c5_c6_rank(pn_comb1     number
+                         , pn_comb5     number
+                         , pn_comb6     number) return number ; 	
+
+--!regresar el tipo de numero. 1:primo, 2:par, 3:impar
+function get_digit_type(pn_comb		number) return number;	
+					 
 end w_common_pkg;
 /
 show errors;

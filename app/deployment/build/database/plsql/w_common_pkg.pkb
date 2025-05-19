@@ -6637,6 +6637,70 @@ exception
     raise; 
 end transformar_valor_posicion;	
 
+--!regresar el rank de la combinacion de C1, C5 y C6								  
+function get_c1_c5_c6_rank(pn_comb1     number
+                         , pn_comb5     number
+                         , pn_comb6     number) return number is 
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'get_c1_c5_c6_rank'; 
+	lv$comb1			 VARCHAR2(3);
+	lv$comb5			 VARCHAR2(3);
+	lv$comb6			 VARCHAR2(3);
+	ln$rank				 NUMBER(1) := 0;	
+begin
+	--!identificando numeros primos, pares e impares
+	select case when is_prime_number (pn_comb1) = 1 then 'PRI' else 
+	       case when mod(pn_comb1,2) = 0 then 'PAR' else 'IMP' end end
+		 , case when is_prime_number (pn_comb5) = 1 then 'PRI' else 
+	       case when mod(pn_comb5,2) = 0 then 'PAR' else 'IMP' end end
+		 , case when is_prime_number (pn_comb6) = 1 then 'PRI' else 
+	       case when mod(pn_comb6,2) = 0 then 'PAR' else 'IMP' end end  
+	  into lv$comb1
+         , lv$comb5
+         , lv$comb6
+      from dual;
+
+	--!obteniendo el ranking
+	if lv$comb1 = 'PRI' then
+		if lv$comb5 = 'PAR' and lv$comb6 = 'PAR' then
+			return 1;
+		elsif lv$comb5 = 'PAR' and lv$comb6 = 'IMP' then
+			return 2;
+		elsif lv$comb5 = 'PAR' and lv$comb6 = 'PRI' then
+			return 3;
+		elsif lv$comb5 = 'PRI' and lv$comb6 = 'PAR' then
+			return 4;
+		elsif lv$comb5 = 'IMP' and lv$comb6 = 'IMP' then
+			return 5;
+		else
+			return -1;
+		end if;
+	else
+		return -1;
+	end if;	
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 	
+end get_c1_c5_c6_rank;
+
+--!regresar el tipo de numero. 1:primo, 2:par, 3:impar
+function get_digit_type(pn_comb		number) return number is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'get_digit_type'; 
+begin
+	if is_prime_number (pn_digit => pn_comb) = 1 then
+		return 1;
+	elsif mod(pn_comb,2) = 0 then
+		return 2;
+	else
+		return 3;
+	end if;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 		
+end get_digit_type;	
+
+	
 end w_common_pkg;
 /
 show errors;

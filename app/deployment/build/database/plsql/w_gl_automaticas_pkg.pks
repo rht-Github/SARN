@@ -46,7 +46,7 @@ procedure ins_gl_automaticas_handler(pv_gambling_type		varchar2 default 'mrtr'
 --!handler para actualizar jugadas en la tabla GL_AUTOMATICAS_DETAIL
 --!en base a la info de gigaloterias
 procedure upd_gl_automaticas_handler(pn_drawing_id     number
-								   , pv_ca_comb_flag    varchar2 default 'Y');
+								   , pv_ca_comb_flag    varchar2 default 'N');
 
 --!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
 procedure aciertos_repetidos_handler(pn_drawing_id		number);
@@ -72,21 +72,33 @@ procedure predicciones_all_handler(pv_nombre				varchar2
 								 , pn_sig_sorteo1           number
 								 , pv_pred1					varchar2
 								 , pf_pres1					float
-								 , pn_sig_sorteo2           number
-								 , pv_pred2					varchar2
-								 , pf_pres2					float
-								 , pn_sig_sorteo3           number
-								 , pv_pred3					varchar2
-								 , pf_pres3					float
-								 , pn_sig_sorteo4           number
-								 , pv_pred4					varchar2
-								 , pf_pres4					float
-								 , pn_sig_sorteo5           number
-								 , pv_pred5					varchar2
-								 , pf_pres5					float
-								 , pn_sig_sorteo6           number
-								 , pv_pred6					varchar2
-								 , pf_pres6					float);		
+								 , pn_sig_sorteo2           number default 0
+								 , pv_pred2					varchar2 default '#'
+								 , pf_pres2					float default 0.0
+								 , pn_sig_sorteo3           number default 0
+								 , pv_pred3					varchar2 default '#'
+								 , pf_pres3					float default 0.0
+								 , pn_sig_sorteo4           number default 0
+								 , pv_pred4					varchar2 default '#'
+								 , pf_pres4					float default 0.0
+								 , pn_sig_sorteo5           number default 0
+								 , pv_pred5					varchar2 default '#'
+								 , pf_pres5					float default 0.0
+								 , pn_sig_sorteo6           number default 0
+								 , pv_pred6					varchar2 default '#'
+								 , pf_pres6					float default 0.0
+								 , pn_sig_sorteo7           number default 0
+								 , pv_pred7					varchar2 default '#'
+								 , pf_pres7					float default 0.0
+								 , pn_sig_sorteo8           number default 0
+								 , pv_pred8					varchar2 default '#'
+								 , pf_pres8					float default 0.0
+								 , pn_sig_sorteo9           number default 0
+								 , pv_pred9					varchar2 default '#'
+								 , pf_pres9					float default 0.0
+								 , pn_sig_sorteo0           number default 0
+								 , pv_pred0					varchar2 default '#'
+								 , pf_pres0					float default 0.0);		
 
 --!insertar conteo de los digitos acerca de jugadas y resultados
 procedure digit_counts_handler(pn_drawing_id		number);								 
@@ -96,6 +108,18 @@ procedure comparativo_lt_handler;
 
 --!insertar y actualizar el historico de digitos en base al id del sorteo
 procedure history_digit_info_handler(pn_drawing_id		number);
+
+--!en base a las predicciones de las terminaciones se actualizan las jugadas en gl_automaticas_detail
+procedure upd_terminacion_cnt_handler(pn_drawing_id		number);
+
+--!actualizar la tabla gl_position_counts con los datos del sorteo ganador
+procedure upd_gl_pos_counts_handler(pn_drawing_id		number
+							      , pn_comb1			number
+							      , pn_comb2			number
+							      , pn_comb3			number
+							      , pn_comb4			number
+							      , pn_comb5			number
+							      , pn_comb6			number);
 
 end w_gl_automaticas_pkg;
 /
