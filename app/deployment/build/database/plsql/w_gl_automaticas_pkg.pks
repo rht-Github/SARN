@@ -10,7 +10,6 @@ select drawing_id id
 	 , color_ley_tercio lt
 	 , ciclo_aparicion ca
      , nvl(pronos_ciclo,-1) pxc
-     , nvl(preferencia_flag,'.') pref
 	 , decode(CHNG_POSICION,null,'.','C') chg 
 	 , nvl(winner_flag,'N') winner
      , case when olap_sys.w_common_pkg.is_prime_number(digit) = 1 then 0 else 
@@ -19,7 +18,8 @@ select drawing_id id
 	 , case when pronos_ciclo is null and preferencia_flag is null then 0
 		    when pronos_ciclo is null and preferencia_flag is not null then 1
 		    when pronos_ciclo is not null and preferencia_flag is null then 2
-		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref		
+		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref	
+     , case when preferencia_flag is null then 0 else 1 end pref			
   from olap_sys.s_calculo_stats
  where drawing_id = pn_drawing_id
  order by b_type, digit;
@@ -100,6 +100,16 @@ procedure predicciones_all_handler(pv_nombre				varchar2
 								 , pv_pred0					varchar2 default '#'
 								 , pf_pres0					float default 0.0);		
 
+
+--!insertar las predicciones en la nueva tabla predicciones
+procedure predicciones_short_handler(pv_nombre				varchar2
+								   , pn_sorteo				number							 
+								   , pv_tipo				varchar2
+								   , pn_sig_sorteo1         number
+								   , pv_pred1				varchar2
+								   , pf_pres1				float
+								   , pv_b_type				varchar2);
+								 
 --!insertar conteo de los digitos acerca de jugadas y resultados
 procedure digit_counts_handler(pn_drawing_id		number);								 
 
@@ -119,7 +129,38 @@ procedure upd_gl_pos_counts_handler(pn_drawing_id		number
 							      , pn_comb3			number
 							      , pn_comb4			number
 							      , pn_comb5			number
-							      , pn_comb6			number);
+							      , pn_comb6			number
+								  , pf_percentile_ini   float default 0.15
+								  , pf_percentile_end   float default 0.9);
+
+--!insertar las probabilidades en la nueva tabla gl_automaticas_prob
+procedure probabilidades_all_handler(pv_nombre_modelo	varchar2
+								, pn_list_id		number
+								, pn_id				number
+								, pn_sorteo_actual	number
+								, pn_ia1			number
+								, pn_ia2			number
+								, pn_ia3			number
+								, pn_ia4			number
+								, pn_ia5			number
+								, pn_ia6			number
+								, pf_digito_prob1	float default 0.0
+								, pf_digito_prob2	float default 0.0
+								, pf_digito_prob3	float default 0.0
+								, pf_digito_prob4	float default 0.0
+								, pf_digito_prob5	float default 0.0
+								, pf_digito_prob6	float default 0.0);
+
+--!actualizar la bandera para el LT ganador en la tabla s_gl_mapas_fre_lt_cnt
+procedure upd_lt_handler (pn_drawing_id number);
+
+--!calcular el conteo de matches para un patron definido
+procedure conteo_patrones_handler(pv_patron_type		varchar2 default 'DIGIT_TYPE'
+								, pn_rango_historico	number);
+
+--!calcular y actualizar el promedio de ciclo de aparicion en base a b_type
+--!para que se pueda utilizar como metrica para la seleccion de jjugadas
+procedure upd_avg_gl_ca(pn_drawing_id		number);
 
 end w_gl_automaticas_pkg;
 /

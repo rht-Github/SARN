@@ -487,7 +487,8 @@ begin
 			     , LT1 = i.lt
 				 , CA1 = i.ca
 				 , PXC1 = i.pxc
-				 , PF1 = i.pxc_pref
+--				 , PF1 = i.pxc_pref
+				 , PF1 = i.pref
 				 , CHG1 = I.CHG
 				 , SORTEO_ACTUAL = pn_drawing_id
 		     where IA1 = i.digit
@@ -506,7 +507,8 @@ begin
 			     , LT2 = i.lt
 				 , CA2 = i.ca
 				 , PXC2 = i.pxc
-				 , PF2 = i.pxc_pref
+--				 , PF2 = i.pxc_pref
+				 , PF2 = i.pref				 
 				 , CHG2 = I.CHG
 		     where IA2 = i.digit
 			   and LIST_ID = pn_list_id
@@ -524,7 +526,8 @@ begin
 			     , LT3 = i.lt
 				 , CA3 = i.ca
 				 , PXC3 = i.pxc
-				 , PF3 = i.pxc_pref
+--				 , PF3 = i.pxc_pref
+				 , PF3 = i.pref				 
 				 , CHG3 = I.CHG
 		     where IA3 = i.digit
 			   and LIST_ID = pn_list_id
@@ -542,7 +545,8 @@ begin
 			     , LT4 = i.lt
 				 , CA4 = i.ca
 				 , PXC4 = i.pxc
-				 , PF4 = i.pxc_pref
+--				 , PF4 = i.pxc_pref
+				 , PF4 = i.pref				 
 				 , CHG4 = I.CHG
 		     where IA4 = i.digit
 			   and LIST_ID = pn_list_id
@@ -560,7 +564,8 @@ begin
 			     , LT5 = i.lt
 				 , CA5 = i.ca
 				 , PXC5 = i.pxc
-				 , PF5 = i.pxc_pref
+--				 , PF5 = i.pxc_pref
+				 , PF5 = i.pref				 
 				 , CHG5 = I.CHG
 		     where IA5 = i.digit
 			   and LIST_ID = pn_list_id
@@ -578,7 +583,8 @@ begin
 			     , LT6 = i.lt
 				 , CA6 = i.ca
 				 , PXC6 = i.pxc
-				 , PF6 = i.pxc_pref
+--				 , PF6 = i.pxc_pref
+				 , PF6 = i.pref				 
 				 , CHG6 = I.CHG
 		     where IA6 = i.digit
 			   and LIST_ID = pn_list_id
@@ -619,7 +625,7 @@ begin
 			   and id = v.id
 			   and list_id = pn_list_id;
 		end loop;
-	end if;*/
+	end if;
 	
 	if pv_ca_comb_flag = 'Y' then
 		for p in c_patron_c1_c5_c6 loop
@@ -629,7 +635,7 @@ begin
 			   and ia5 = p.comb5
 			   and ia6 = p.comb6;	
 		end loop;
-	end if;
+	end if;*/
 exception
   when others then
 	rollback;
@@ -645,13 +651,13 @@ procedure contar_aciertos_repetidos(pn_drawing_id		number
 	ln$aciertos_sum					 number := 0;
 	ln$row_cnt                       number := 0;
 
-	--!cursor global de resultados del sorteo
+	--!cursor global de resultados del sorteo anterior
 	cursor c_resultados (pn_drawing_id		number) is
 	with resultado_tbl as (
 	select comb1||','||comb2||','||comb3||','||comb4||','||comb5||','||comb6 str
 	     , gambling_id id
 	  from olap_sys.sl_gamblings
-	 where gambling_id = pn_drawing_id 
+	 where gambling_id = pn_drawing_id -1
 	) select regexp_substr((select str from resultado_tbl),'[^,]+',1,level) digit, (select id from resultado_tbl) id
 					   from dual 
 					 connect by level <= length((select str from resultado_tbl))-length(replace((select str from resultado_tbl),',',''))+1;	
@@ -889,24 +895,7 @@ begin
 		--!actualizar los valores de frecuencia, ley del tercio, ciclo de aparicion, pronos por ciclo y numeros preferidos
 		upd_gl_automaticas_detail(pn_drawing_id => pn_drawing_id
 								, pv_ca_comb_flag => pv_ca_comb_flag
-								, pn_list_id    => k.list_id);
-								
-		--!actualizar bandera de jugadas a Y para las jugadas mas ganadoras
-		--!cuyo percentile sea mayour a 55
-		update olap_sys.gl_automaticas_detail 
-		   set jugar_flag='Y'
-			 , updated_date = sysdate
-		 where jugar_flag='N' 
-		   and aciertos_accum > (   
-		with group_tbl as (   
-		select aciertos_accum
-			 , count(1) cnt
-		  from olap_sys.gl_automaticas_detail 
-		 where jugar_flag='N' 
-		 group by aciertos_accum
-		)
-		select percentile_disc(0.55) within group (order by aciertos_accum) perc_aciertos
-		  from group_tbl);								
+								, pn_list_id    => k.list_id);							
 	end loop;						
 exception
   when others then
@@ -977,30 +966,6 @@ procedure upd_predicciones_all(pn_drawing_id		number) is
            chng1, chng2, chng3, chng4, chng5, chng6,
 		   pref1, pref2, pref3, pref4, pref5, pref6,
            pxc1, pxc2, pxc3, pxc4, pxc5, pxc6,
-		   case when pxc1 = 0 and pref1 = 0 then 0 
-           when pxc1 = 0 and pref1 = 1 then 1 
-           when pxc1 = 1 and pref1 = 0 then 2 
-           when pxc1 = 1 and pref1 = 1 then 3 end pxc_pref1,
-		   case when pxc2 = 0 and pref2 = 0 then 0 
-           when pxc2 = 0 and pref2 = 1 then 1 
-           when pxc2 = 1 and pref2 = 0 then 2 
-           when pxc2 = 1 and pref2 = 1 then 3 end pxc_pref2,
-		   case when pxc3 = 0 and pref3 = 0 then 0 
-           when pxc3 = 0 and pref3 = 1 then 1 
-           when pxc3 = 1 and pref3 = 0 then 2 
-           when pxc3 = 1 and pref3 = 1 then 3 end pxc_pref3,
-		   case when pxc4 = 0 and pref4 = 0 then 0 
-           when pxc4 = 0 and pref4 = 1 then 1 
-           when pxc4 = 1 and pref4 = 0 then 2 
-           when pxc4 = 1 and pref4 = 1 then 3 end pxc_pref4,
-		   case when pxc5 = 0 and pref5 = 0 then 0 
-           when pxc5 = 0 and pref5 = 1 then 1 
-           when pxc5 = 1 and pref5 = 0 then 2 
-           when pxc5 = 1 and pref5 = 1 then 3 end pxc_pref5,
-		   case when pxc6 = 0 and pref6 = 0 then 0 
-           when pxc6 = 0 and pref6 = 1 then 1 
-           when pxc6 = 1 and pref6 = 0 then 2 
-           when pxc6 = 1 and pref6 = 1 then 3 end pxc_pref6,
 		   d1,d2,d3,d4,d5,d6,
 		   pn_cnt, none_cnt, par_cnt,
 		   t1, t2, t3, t4, t5, t6, t7, t8, t9, t0	
@@ -1115,16 +1080,16 @@ begin
 		 where prediccion_sorteo = ln$sorteo_anterior
 		   and (instr(prediccion_tipo,'DIGIT') > 0 or instr(prediccion_tipo,'POS') > 0);	
 
-		dbms_output.put_line('pxc junto con numeros favorables');
-		dbms_output.put_line(k.pxc_pref1||' - '||k.pxc_pref2||' - '||k.pxc_pref3||' - '||k.pxc_pref4||' - '||k.pxc_pref5||' - '||k.pxc_pref6);
-		--pxc junto con numeros favorables
+		dbms_output.put_line('numeros favorables');
+		dbms_output.put_line(k.pref1||' - '||k.pref2||' - '||k.pref3||' - '||k.pref4||' - '||k.pref5||' - '||k.pref6);
+		--numeros favorables
 		update olap_sys.predicciones_all
-		   set res1 = k.pxc_pref1
-		     , res2 = k.pxc_pref2
-			 , res3 = k.pxc_pref3
-			 , res4 = k.pxc_pref4
-			 , res5 = k.pxc_pref5
-			 , res6 = k.pxc_pref6
+		   set res1 = k.pref1
+		     , res2 = k.pref2
+			 , res3 = k.pref3
+			 , res4 = k.pref4
+			 , res5 = k.pref5
+			 , res6 = k.pref6
 		 where prediccion_sorteo = ln$sorteo_anterior
 		   and instr(prediccion_tipo,'PXC_PREF') > 0;
 
@@ -1185,37 +1150,37 @@ begin
 		update olap_sys.predicciones_all
 		   set res1 = k.comb1
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B1') > 0;
+		   and instr(prediccion_tipo,'B1') > 0 or b_type = 'B1';
 
 		--b2
 		update olap_sys.predicciones_all
 		   set res1 = k.comb2
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B2') > 0;	
+		   and instr(prediccion_tipo,'B2') > 0 or b_type = 'B2';
 
 		--b3
 		update olap_sys.predicciones_all
 		   set res1 = k.comb3
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B3') > 0;
+		   and instr(prediccion_tipo,'B3') > 0 or b_type = 'B3';
 
 		--b4
 		update olap_sys.predicciones_all
 		   set res1 = k.comb4
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B4') > 0;
+		   and instr(prediccion_tipo,'B4') > 0 or b_type = 'B4';
 
 		--b5
 		update olap_sys.predicciones_all
 		   set res1 = k.comb5
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B5') > 0;
+		   and instr(prediccion_tipo,'B5') > 0 or b_type = 'B5';
 
 		--b6
 		update olap_sys.predicciones_all
 		   set res1 = k.comb6
 		 where prediccion_sorteo = ln$sorteo_anterior
-		   and instr(prediccion_tipo,'B6') > 0;
+		   and instr(prediccion_tipo,'B6') > 0 or b_type = 'B5';
 	end loop;
 
     --actualizando las columnas match para las predicciones relacionadas a impar, par y primo
@@ -1292,7 +1257,13 @@ begin
         or  instr(prediccion_tipo,'B3') > 0
         or  instr(prediccion_tipo,'B4') > 0
 		or  instr(prediccion_tipo,'B5') > 0
-		or  instr(prediccion_tipo,'B6') > 0);
+		or  instr(prediccion_tipo,'B6') > 0
+		or  b_type = 'B1'
+		or  b_type = 'B2'
+		or  b_type = 'B3'
+		or  b_type = 'B4'
+		or  b_type = 'B5'
+		or  b_type = 'B6');
 		
     --actualizando el contador de match
 	update olap_sys.predicciones_all
@@ -1881,33 +1852,34 @@ procedure ins_predicciones_all(pv_nombre				varchar2
 							 , pn_sig_sorteo1           number
 							 , pv_pred1					varchar2
 							 , pf_pres1					float
-							 , pn_sig_sorteo2           number
-							 , pv_pred2					varchar2
-							 , pf_pres2					float
-							 , pn_sig_sorteo3           number
-							 , pv_pred3					varchar2
-							 , pf_pres3					float
-							 , pn_sig_sorteo4           number
-							 , pv_pred4					varchar2
-							 , pf_pres4					float
-							 , pn_sig_sorteo5           number
-							 , pv_pred5					varchar2
-							 , pf_pres5					float
-							 , pn_sig_sorteo6           number
-							 , pv_pred6					varchar2
-							 , pf_pres6					float							 
-							 , pn_sig_sorteo7           number
-							 , pv_pred7					varchar2
-							 , pf_pres7					float
-							 , pn_sig_sorteo8           number
-							 , pv_pred8					varchar2
-							 , pf_pres8					float
-							 , pn_sig_sorteo9           number
-							 , pv_pred9					varchar2
-							 , pf_pres9					float							 
-							 , pn_sig_sorteo0           number
-							 , pv_pred0					varchar2
-							 , pf_pres0					float) is
+							 , pn_sig_sorteo2           number default 0
+							 , pv_pred2					varchar2 default '#'
+							 , pf_pres2					float default 0.0
+							 , pn_sig_sorteo3           number default 0
+							 , pv_pred3					varchar2 default '#'
+							 , pf_pres3					float default 0.0
+							 , pn_sig_sorteo4           number default 0
+							 , pv_pred4					varchar2 default '#'
+							 , pf_pres4					float default 0.0
+							 , pn_sig_sorteo5           number default 0
+							 , pv_pred5					varchar2 default '#'
+							 , pf_pres5					float default 0.0
+							 , pn_sig_sorteo6           number default 0
+							 , pv_pred6					varchar2 default '#'
+							 , pf_pres6					float default 0.0				 
+							 , pn_sig_sorteo7           number default 0
+							 , pv_pred7					varchar2 default '#'
+							 , pf_pres7					float default 0.0
+							 , pn_sig_sorteo8           number default 0
+							 , pv_pred8					varchar2 default '#'
+							 , pf_pres8					float default 0.0
+							 , pn_sig_sorteo9           number default 0
+							 , pv_pred9					varchar2 default '#'
+							 , pf_pres9					float default 0.0							 
+							 , pn_sig_sorteo0           number default 0
+							 , pv_pred0					varchar2 default '#'
+							 , pf_pres0					float default 0.0
+							 , pv_b_type				varchar2 default null) is
 	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_predicciones_all';
 begin
 	--!insertando el nuevo registro de la prediccion
@@ -1944,7 +1916,8 @@ begin
 										   pres9,
 										   siguiente_sorteo0,
 										   pred0,
-										   pres0)
+										   pres0,
+										   b_type)
 	values ((select nvl(max(prediccion_id),0)+1 from olap_sys.predicciones_all)
 	      , pv_nombre
 	      , pn_sorteo
@@ -1978,7 +1951,8 @@ begin
 		  , pf_pres9
 		  , pn_sig_sorteo0
 		  , pv_pred0
-		  , pf_pres0);
+		  , pf_pres0
+		  , pv_b_type);
 	commit;		  
 exception
   when others then
@@ -2020,7 +1994,7 @@ procedure predicciones_all_handler(pv_nombre				varchar2
 								 , pf_pres9					float default 0.0
 								 , pn_sig_sorteo0           number default 0
 								 , pv_pred0					varchar2 default '#'
-								 , pf_pres0					float default 0.0) is
+								 , pf_pres0					float default 0.0) is	
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'predicciones_all_handler'; 
 begin		
 	--!insertar las predicciones en la nueva tabla predicciones
@@ -2063,6 +2037,32 @@ exception
     raise; 
 end predicciones_all_handler;								 
 
+
+--!insertar las predicciones en la nueva tabla predicciones
+procedure predicciones_short_handler(pv_nombre				varchar2
+								   , pn_sorteo				number							 
+								   , pv_tipo				varchar2
+								   , pn_sig_sorteo1         number
+								   , pv_pred1				varchar2
+								   , pf_pres1				float
+								   , pv_b_type				varchar2) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'predicciones_short_handler'; 
+begin		
+	--!insertar las predicciones en la nueva tabla predicciones
+	ins_predicciones_all(pv_nombre => pv_nombre
+					   , pn_sorteo => pn_sorteo
+					   , pv_tipo   => pv_tipo
+					   , pn_sig_sorteo1 => pn_sig_sorteo1
+					   , pv_pred1  => pv_pred1
+					   , pf_pres1  => pf_pres1
+					   , pv_b_type => pv_b_type);	
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end predicciones_short_handler;	
+								 
+								 
 --!insertar n registros en la tabla, los cuales seran actualizados en procesos posteriores
 procedure ins_digit_counts(pn_rec_intertados		number
 						 , pn_drawing_id			number) is
@@ -2460,7 +2460,15 @@ begin
 		--dbms_output.put_line('p: '||p.id||' - '||p.b_type||' - '||p.rank_cnt||' - '||p.b_type_rank||' - '||p.pct_cnt);
 		for s in c_secondary (pv_b_type => p.b_type
 		                    , pn_rank_cnt => p.rank_cnt) loop
-			dbms_output.put_line(s.drawing_id||' - '||s.b_type||' - '||s.lt||' - P'||olap_sys.w_common_pkg.g_index);					
+			dbms_output.put_line(s.drawing_id||' - '||s.b_type||' - '||s.lt||' - P'||olap_sys.w_common_pkg.g_index);	
+			
+			--!actualizacion de la tabla que almacena el conteo de LT por color
+			update olap_sys.s_gl_mapas_fre_lt_cnt
+			   set predicted_flag_end = 'P'||olap_sys.w_common_pkg.g_index
+			 where gl_type = 'LT'
+			   and drawing_id_end = to_number(s.drawing_id)
+			   and b_type_end = s.b_type
+			   and gl_color_end = decode(s.lt,'R',1,'G',2,'B',3);
 		end loop;
 		if olap_sys.w_common_pkg.g_index < 2 then
 			olap_sys.w_common_pkg.g_index := olap_sys.w_common_pkg.g_index + 1;
@@ -2548,8 +2556,8 @@ begin
 	   and c.digit(+) = p.history_digit
 	)
 	select drawing_id, b_type, digit_hdr, history_digit, match_cnt, drawing_cnt, next_drawing_id, id, fr, lt, ca, pxc, pre, chng, pxc_pref, jugar_flag
-	  from output_tbl
-	 where jugar_flag = 'Y';	
+	  from output_tbl;
+	 --where jugar_flag = 'Y';	
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
@@ -2678,8 +2686,7 @@ procedure upd_terminacion_cnt_handler(pn_drawing_id		number) is
            substr(lpad(ia5,2,'0'),2,1)||','||
            substr(lpad(ia6,2,'0'),2,1) automatica
       from olap_sys.gl_automaticas_detail
-     where jugar_flag = 'Y'
-       and sorteo_actual = pn_drawing_id; 
+     where sorteo_actual = pn_drawing_id; 
 
     cursor c_to_row (pv_string      varchar2) is
     with distinct_tbl as (
@@ -2691,8 +2698,7 @@ procedure upd_terminacion_cnt_handler(pn_drawing_id		number) is
 begin
     --!inicializando la columna
     update olap_sys.gl_automaticas_detail
-       set terminacion_cnt = 0
-     where jugar_flag = 'Y';
+       set terminacion_cnt = 0;
      
     for p in c_prediccion (pn_drawing_id => pn_drawing_id) loop
         --dbms_output.put_line('prediccion: '||p.prediccion);
@@ -2714,8 +2720,7 @@ begin
 				update olap_sys.gl_automaticas_detail
 				   set terminacion_cnt = nvl(terminacion_cnt,0) + ln$match_cnt
 				 where list_id = a.list_id
-				   and id = a.id
-				   and jugar_flag = 'Y';
+				   and id = a.id;
 			end if;            
 		end loop;
 	end loop;
@@ -2747,7 +2752,7 @@ begin
 	   set r_cnt1 = nvl(r_cnt1,0) + 1
          , sorteo1_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos1 = pn_comb1
+     where nvl(pos1,0) = pn_comb1
 	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo1_id,0) = pn_drawing_id);
@@ -2759,7 +2764,7 @@ begin
 	   set r_cnt2 = nvl(r_cnt2,0) + 1
          , sorteo2_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos2 = pn_comb2
+     where nvl(pos2,0) = pn_comb2
 	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo2_id,0) = pn_drawing_id);
@@ -2771,7 +2776,7 @@ begin
 	   set r_cnt3 = nvl(r_cnt3,0) + 1
          , sorteo3_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos3 = pn_comb3
+     where nvl(pos3,0) = pn_comb3
  	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo3_id,0) = pn_drawing_id);
@@ -2784,7 +2789,7 @@ begin
 	   set r_cnt4 = nvl(r_cnt4,0) + 1
          , sorteo4_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos4 = pn_comb4
+     where nvl(pos4,0) = pn_comb4
 	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo4_id,0) = pn_drawing_id);
@@ -2796,7 +2801,7 @@ begin
 	   set r_cnt5 = nvl(r_cnt5,0) + 1
          , sorteo5_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos5 = pn_comb5
+     where nvl(pos5,0) = pn_comb5
 	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo5_id,0) = pn_drawing_id);
@@ -2808,7 +2813,7 @@ begin
 	   set r_cnt6 = nvl(r_cnt6,0) + 1
          , sorteo6_id = pn_drawing_id
 		 , updated_date = sysdate
-     where pos6 = pn_comb6
+     where nvl(pos6,0) = pn_comb6
 	   and not exists (select 1
 						 from olap_sys.gl_position_counts
 						where nvl(sorteo6_id,0) = pn_drawing_id);
@@ -2826,69 +2831,77 @@ procedure upd_gl_position_counts_dif is
 	
 	cursor c_dif is
 	select seq
-		 , case when sorteo1_id = 0 then 0 else sorteo - sorteo1_id end dif1
-		 , case when sorteo2_id = 0 then 0 else sorteo - sorteo2_id end dif2
-		 , case when sorteo3_id = 0 then 0 else sorteo - sorteo3_id end dif3
-		 , case when sorteo4_id = 0 then 0 else sorteo - sorteo4_id end dif4
-		 , case when sorteo5_id = 0 then 0 else sorteo - sorteo5_id end dif5
-		 , case when sorteo6_id = 0 then 0 else sorteo - sorteo6_id end dif6
+		 , case when nvl(sorteo1_id,0) = 0 then 0 else sorteo - sorteo1_id end dif1
+		 , case when nvl(sorteo2_id,0) = 0 then 0 else sorteo - sorteo2_id end dif2
+		 , case when nvl(sorteo3_id,0) = 0 then 0 else sorteo - sorteo3_id end dif3
+		 , case when nvl(sorteo4_id,0) = 0 then 0 else sorteo - sorteo4_id end dif4
+		 , case when nvl(sorteo5_id,0) = 0 then 0 else sorteo - sorteo5_id end dif5
+		 , case when nvl(sorteo6_id,0) = 0 then 0 else sorteo - sorteo6_id end dif6
 	 from olap_sys.gl_position_counts
 	 order by seq;	
 begin
 	for d in c_dif loop						
+		dbms_output.put_line('seq: '||d.seq||' dif1: '||d.dif1||' dif2: '||d.dif2||' dif3: '||d.dif3||' dif4: '||d.dif4||' dif5: '||d.dif5||' dif6: '||d.dif6);
 		--!posicion1
 		update olap_sys.gl_position_counts
 		   set dif1 = d.dif1
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos1 is not null;
+		   and pos1 is not null
+		   and sorteo1_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif1: '||d.dif1||' -> '||sql%rowcount||' rows updated');
-		
+
 		--!posicion2
 		update olap_sys.gl_position_counts
 		   set dif2 = d.dif2
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos2 is not null;
+		   and pos2 is not null
+		   and sorteo2_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif2: '||d.dif2||' -> '||sql%rowcount||' rows updated');
-		
+
 		--!posicion3
 		update olap_sys.gl_position_counts
 		   set dif3 = d.dif3
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos3 is not null;
+		   and pos3 is not null
+		   and sorteo3_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif3: '||d.dif3||' -> '||sql%rowcount||' rows updated');
-		
+
 		--!posicion4
 		update olap_sys.gl_position_counts
 		   set dif4 = d.dif4
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos4 is not null;
+		   and pos4 is not null
+		   and sorteo4_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif4: '||d.dif4||' -> '||sql%rowcount||' rows updated');
-		
+
 		--!posicion5
 		update olap_sys.gl_position_counts
 		   set dif5 = d.dif5
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos5 is not null;
+		   and pos5 is not null
+		   and sorteo5_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif5: '||d.dif5||' -> '||sql%rowcount||' rows updated');
-		
+
 		--!posicion6
 		update olap_sys.gl_position_counts
 		   set dif6 = d.dif6
 			 , updated_date = sysdate
 		 where seq = d.seq
-		   and pos6 is not null;
+		   and pos6 is not null
+		   and sorteo6_id is not null;
 
 		dbms_output.put_line('seq: '||d.seq||' dif6: '||d.dif6||' -> '||sql%rowcount||' rows updated');
+
 	end loop;
 exception
   when others then
@@ -2897,19 +2910,18 @@ exception
 end upd_gl_position_counts_dif;
 
 --!actualizar flags en base al promedio del valor de las columnas dif
-procedure upd_gl_position_counts_flags is
+procedure upd_gl_position_counts_flags (pf_percentile_ini   float
+								      , pf_percentile_end   float) is
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_gl_position_counts_flags'; 
-	CF$PERCENTILE_INI	 CONSTANT FLOAT := 0.3;
-	CF$PERCENTILE_END	 CONSTANT FLOAT := 0.85;
 	
 	cursor c_pos1 (pf_percentil_ini float
                  , pf_percentil_end float) is
 	select round(avg(j_cnt1),1) avg_j_cnt1
 		 , round(avg(r_cnt1),1) avg_r_cnt1
-         , percentile_cont(0.25) within group (order by dif1) perc_ini_dif1
+         , percentile_cont(pf_percentil_ini) within group (order by dif1) perc_ini_dif1
          , percentile_cont(pf_percentil_end) within group (order by dif1) perc_end_dif1 
 	  from olap_sys.gl_position_counts
-	 where pos1 > 0;  
+	 where nvl(pos1,0) > 0;  
 	 
 	cursor c_pos2 (pf_percentil_ini float
                  , pf_percentil_end float) is
@@ -2918,7 +2930,7 @@ procedure upd_gl_position_counts_flags is
          , percentile_cont(pf_percentil_ini) within group (order by dif2) perc_ini_dif2
          , percentile_cont(pf_percentil_end) within group (order by dif2) perc_end_dif2 
 	  from olap_sys.gl_position_counts	
-	 where pos2 > 0;
+	 where nvl(pos2,0) > 0;
 	 
 	cursor c_pos3 (pf_percentil_ini float
                  , pf_percentil_end float) is
@@ -2927,7 +2939,7 @@ procedure upd_gl_position_counts_flags is
          , percentile_cont(pf_percentil_ini) within group (order by dif3) perc_ini_dif3
          , percentile_cont(pf_percentil_end) within group (order by dif3) perc_end_dif3 
 	  from olap_sys.gl_position_counts	
-	 where pos3 > 0;
+	 where nvl(pos3,0) > 0;
 	 
 	cursor c_pos4 (pf_percentil_ini float
                  , pf_percentil_end float) is
@@ -2936,7 +2948,7 @@ procedure upd_gl_position_counts_flags is
          , percentile_cont(pf_percentil_ini) within group (order by dif4) perc_ini_dif4
          , percentile_cont(pf_percentil_end) within group (order by dif4) perc_end_dif4 
 	  from olap_sys.gl_position_counts
-	 where pos4 > 0;
+	 where nvl(pos4,0) > 0;
 	 
 	cursor c_pos5 (pf_percentil_ini float
                  , pf_percentil_end float) is
@@ -2945,16 +2957,16 @@ procedure upd_gl_position_counts_flags is
          , percentile_cont(pf_percentil_ini) within group (order by dif5) perc_ini_dif5
          , percentile_cont(pf_percentil_end) within group (order by dif5) perc_end_dif5 
 	  from olap_sys.gl_position_counts
-	 where pos5 > 0;
+	 where nvl(pos5,0) > 0;
 
 	cursor c_pos6 (pf_percentil_ini float
                  , pf_percentil_end float) is
 	select round(avg(j_cnt6),1) avg_j_cnt6
 		 , round(avg(r_cnt6),1) avg_r_cnt6   
-         , percentile_cont(0.25) within group (order by dif6) perc_ini_dif6
+         , percentile_cont(pf_percentil_ini) within group (order by dif6) perc_ini_dif6
          , percentile_cont(pf_percentil_end) within group (order by dif6) perc_end_dif6 
 	  from olap_sys.gl_position_counts
-	 where pos6 > 0;
+	 where nvl(pos6,0) > 0;
 	 
 begin
 	--!inicializando banderas
@@ -2978,8 +2990,8 @@ begin
 		 , dif5_flag = 0
 		 , dif6_flag = 0;		 
 		 
-	for a in c_pos1 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop						
+	for a in c_pos1 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop						
 		--!posicion1
 		update olap_sys.gl_position_counts
 		   set j_cnt1_flag = 1
@@ -3003,8 +3015,8 @@ begin
 		dbms_output.put_line('between dif1: '||a.perc_ini_dif1||' and '||a.perc_end_dif1||' flag = 1  -> '||sql%rowcount||' rows updated');
 	end loop;
 
-	for a in c_pos2 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop		
+	for a in c_pos2 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop		
 		--!posicion2
 		update olap_sys.gl_position_counts
 		   set j_cnt2_flag = 1
@@ -3028,8 +3040,8 @@ begin
 		dbms_output.put_line('between dif2: '||a.perc_ini_dif2||' and '||a.perc_end_dif2||' flag = 1  -> '||sql%rowcount||' rows updated');
 	end loop;
 
-	for a in c_pos3 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop	
+	for a in c_pos3 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop	
 		--!posicion3
 		update olap_sys.gl_position_counts
 		   set j_cnt3_flag = 1
@@ -3053,8 +3065,8 @@ begin
 		dbms_output.put_line('between dif3: '||a.perc_ini_dif3||' and '||a.perc_end_dif3||' flag = 1  -> '||sql%rowcount||' rows updated');
 	end loop;
 
-	for a in c_pos4 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop	
+	for a in c_pos4 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop	
 		--!posicion4
 		update olap_sys.gl_position_counts
 		   set j_cnt4_flag = 1
@@ -3078,8 +3090,8 @@ begin
 		dbms_output.put_line('between dif4: '||a.perc_ini_dif4||' and '||a.perc_end_dif4||' flag = 1  -> '||sql%rowcount||' rows updated');
 	end loop;
 
-	for a in c_pos5 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop	
+	for a in c_pos5 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop	
 		--!posicion5
 		update olap_sys.gl_position_counts
 		   set j_cnt5_flag = 1
@@ -3103,8 +3115,8 @@ begin
 		dbms_output.put_line('between dif5: '||a.perc_ini_dif5||' and '||a.perc_end_dif5||' flag = 1  -> '||sql%rowcount||' rows updated');
 	end loop;
 
-	for a in c_pos6 (pf_percentil_ini => CF$PERCENTILE_INI
-	               , pf_percentil_end => CF$PERCENTILE_END) loop	
+	for a in c_pos6 (pf_percentil_ini => pf_percentile_ini
+	               , pf_percentil_end => pf_percentile_end) loop	
 		--!posicion6
 		update olap_sys.gl_position_counts
 		   set j_cnt6_flag = 1
@@ -3140,10 +3152,12 @@ procedure upd_gl_pos_counts_handler(pn_drawing_id	number
 							      , pn_comb3			number
 							      , pn_comb4			number
 							      , pn_comb5			number
-							      , pn_comb6			number) is
+							      , pn_comb6			number
+								  , pf_percentile_ini   float default 0.15
+								  , pf_percentile_end   float default 0.9) is
 	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_gl_pos_counts_handler'; 							   
 begin
-
+	dbms_output.enable(null);
 	--!actualizar la tabla gl_position_counts con los datos del sorteo ganador
 	upd_gl_position_counts(pn_drawing_id => pn_drawing_id
 					     , pn_comb1 => pn_comb1
@@ -3157,13 +3171,720 @@ begin
 	upd_gl_position_counts_dif;
 
 	--!actualizar flags en base al promedio del valor de las columnas dif
-	upd_gl_position_counts_flags; 
+	upd_gl_position_counts_flags (pf_percentile_ini => pf_percentile_ini
+								, pf_percentile_end => pf_percentile_end); 
 exception
   when others then
     dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
     raise; 
 end upd_gl_pos_counts_handler;
 
+--!insertar las probabilidades en la nueva tabla gl_automaticas_prob
+procedure ins_gl_automaticas_prob(pv_nombre_modelo	varchar2
+								, pn_list_id		number
+								, pn_id				number
+								, pn_sorteo_actual	number
+								, pn_ia1			number
+								, pn_ia2			number
+								, pn_ia3			number
+								, pn_ia4			number
+								, pn_ia5			number
+								, pn_ia6			number
+								, pf_digito_prob1	float
+								, pf_digito_prob2	float
+								, pf_digito_prob3	float
+								, pf_digito_prob4	float
+								, pf_digito_prob5	float
+								, pf_digito_prob6	float) is
+	LV$PROCEDURE_NAME       constant varchar2(30) := 'ins_gl_automaticas_prob';
+begin
+	--!insertando el nuevo registro de la prediccion
+	insert into olap_sys.gl_automaticas_prob (gambling_type
+											, nombre_modelo
+											, list_id
+											, id
+											, seq_id
+											, sorteo_actual
+											, ia1
+											, ia2
+											, ia3
+											, ia4
+											, ia5
+											, ia6
+											, digito_prob1
+											, digito_prob2
+											, digito_prob3
+											, digito_prob4
+											, digito_prob5
+											, digito_prob6
+											, digito_sum_prob)
+	values ('mrtr'
+	      , pv_nombre_modelo
+	      , pn_list_id
+	      , pn_id
+		  , (select nvl(max(seq_id),0)+1 from olap_sys.gl_automaticas_prob)
+	      , pn_sorteo_actual
+	      , pn_ia1
+		  , pn_ia2
+	      , pn_ia3
+	      , pn_ia4
+		  , pn_ia5
+	      , pn_ia6
+	      , pf_digito_prob1
+		  , pf_digito_prob2
+	      , pf_digito_prob3
+	      , pf_digito_prob4
+		  , pf_digito_prob5
+	      , pf_digito_prob6
+	      , pf_digito_prob1 + pf_digito_prob2 + pf_digito_prob3 + pf_digito_prob4 + pf_digito_prob5 + pf_digito_prob6);
+	commit;		  
+exception
+  when others then
+	rollback;
+	dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 	
+end ins_gl_automaticas_prob;
+
+--!insertar las probabilidades en la nueva tabla gl_automaticas_prob
+procedure probabilidades_all_handler(pv_nombre_modelo	varchar2
+								, pn_list_id		number
+								, pn_id				number
+								, pn_sorteo_actual	number
+								, pn_ia1			number
+								, pn_ia2			number
+								, pn_ia3			number
+								, pn_ia4			number
+								, pn_ia5			number
+								, pn_ia6			number
+								, pf_digito_prob1	float default 0.0
+								, pf_digito_prob2	float default 0.0
+								, pf_digito_prob3	float default 0.0
+								, pf_digito_prob4	float default 0.0
+								, pf_digito_prob5	float default 0.0
+								, pf_digito_prob6	float default 0.0) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'probabilidades_all_handler'; 
+begin		
+	--!insertar las probabilidades en la nueva tabla gl_automaticas_prob
+	ins_gl_automaticas_prob(pv_nombre_modelo => pv_nombre_modelo
+						  , pn_list_id		 => pn_list_id
+						  , pn_id			 => pn_id
+						  , pn_sorteo_actual => pn_sorteo_actual
+						  , pn_ia1			 => pn_ia1
+						  , pn_ia2			 => pn_ia2
+						  , pn_ia3			 => pn_ia3
+						  , pn_ia4			 => pn_ia4
+						  , pn_ia5			 => pn_ia5
+						  , pn_ia6			 => pn_ia6
+						  , pf_digito_prob1	 => pf_digito_prob1
+						  , pf_digito_prob2	 => pf_digito_prob2
+						  , pf_digito_prob3	 => pf_digito_prob3
+						  , pf_digito_prob4	 => pf_digito_prob4
+						  , pf_digito_prob5	 => pf_digito_prob5
+						  , pf_digito_prob6	 => pf_digito_prob6);		   
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end probabilidades_all_handler;
+
+
+--!actualizar la bandera para el LT ganador en la tabla s_gl_mapas_fre_lt_cnt
+procedure upd_lt_handler (pn_drawing_id number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_lt_handler'; 
+begin
+	olap_sys.w_common_pkg.g_index := 1;
+	for p in c_main (pn_drawing_id =>  pn_drawing_id - 1) loop
+		if p.winner = 'Y' then
+			update olap_sys.s_gl_mapas_fre_lt_cnt
+			   set winner_flag_end = 'Y'
+			 where gl_type = 'LT'
+			   and drawing_id_end = p.id
+			   and b_type_end = p.b_type
+			   and gl_color_end = p.lt;
+		end if;	   
+	end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_lt_handler;
+
+
+--!registra los match por posicion para un patron especifico
+procedure upd_conteo_patrones(pv_patron_type		varchar2) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_conteo_patrones'; 
+	ln$default_no_match	 CONSTANT NUMBER := 100;
+	
+	cursor c_patrones (pv_patron_type		varchar2) is
+	select sorteo_id
+		 , b_type
+		 , j_digit_type
+		 , j_digit_count_str
+		 , j_preferencia_flag
+		 , r_digit_type
+		 , r_preferencia_flag
+	  from olap_sys.conteo_patrones
+	 where patron_type = pv_patron_type 
+	 order by b_type, sorteo_id; 	
+begin
+	for m in c_patrones (pv_patron_type => pv_patron_type) loop
+		dbms_output.put_line(m.sorteo_id
+		 ||' - '||m.b_type
+		 ||' - '||m.j_digit_type
+		 ||' - '||m.j_digit_count_str
+		 ||' - '||m.j_preferencia_flag
+		 ||' - '||m.r_digit_type
+		 ||' - '||m.r_preferencia_flag);
+		if m.b_type = 'B1' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match1 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match1 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match1 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+
+		if m.b_type = 'B2' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match2 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match2 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match2 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+
+		if m.b_type = 'B3' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match3 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match3 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match3 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+
+		if m.b_type = 'B4' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match4 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match4 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match4 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+
+		if m.b_type = 'B5' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match5 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match5 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match5 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+
+		if m.b_type = 'B6' then
+			if m.r_preferencia_flag in ('N','Y') then
+				if instr(m.j_digit_type, m.r_digit_type) > 0 then
+					update olap_sys.conteo_patrones
+					   set match6 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match6 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			else
+				update olap_sys.conteo_patrones
+				   set no_match6 = ln$default_no_match	
+				 where patron_type = pv_patron_type
+				   and sorteo_id = m.sorteo_id
+				   and b_type = m.b_type;			
+			end if;
+		end if;
+	end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_conteo_patrones;
+
+
+--!insertar registro en la tabla conteo_patrones
+procedure ins_conteo_patrones(pv_patron_type		varchar2
+							, pn_sorteo_id			number
+							, pv_b_type				varchar2
+							, pv_j_digit_type		varchar2
+							, pv_j_digit_count_str	varchar2
+							, pv_j_preferencia_flag	varchar2
+							, pv_r_digit_type		varchar2
+							, pv_r_preferencia_flag	varchar2) is
+
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'ins_conteo_patrones'; 
+	ln$ultimo_sorteo			  NUMBER := 0;
+begin
+	insert into olap_sys.conteo_patrones(patron_type
+									   , sorteo_id
+									   , b_type
+									   , j_digit_type
+									   , j_digit_count_str
+									   , j_preferencia_flag
+									   , r_digit_type
+									   , r_preferencia_flag)
+	values(pv_patron_type
+		 , pn_sorteo_id
+		 , pv_b_type
+		 , pv_j_digit_type
+		 , pv_j_digit_count_str
+		 , pv_j_preferencia_flag
+		 , pv_r_digit_type
+		 , pv_r_preferencia_flag);									
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_conteo_patrones;
+
+
+--!calcular el conteo de matches para patron digit_type
+procedure patron_digit_type(pn_ultimo_sorteo	number
+                          , pn_rango_historico	number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'patron_digit_type';
+	CV$PATRON_NOMBRE	 CONSTANT VARCHAR2(30) := 'DIGIT_TYPE';
+	ln$rango_historico			  NUMBER := 0;
+	
+	cursor c_conteo_patrones (pn_ultimo_sorteo		number
+                            , pn_rango_historico	number) is
+	with nivel_n_tbl as (
+	select drawing_id
+		 , b_type
+		 , olap_sys.w_common_pkg.get_digit_type(digit) digit_type 
+		 , decode(preferencia_flag,'X','Y','N') preferencia_flag
+		 , count(1) cnt
+	  from olap_sys.s_calculo_stats
+	 where preferencia_flag is not null
+	   and drawing_id = pn_ultimo_sorteo - pn_rango_historico
+	 group by drawing_id
+		 , b_type
+		 , olap_sys.w_common_pkg.get_digit_type(digit)
+		 , preferencia_flag		 
+	) 
+    , resultado_tbl as (
+    select drawing_id r_drawing_id
+         , b_type r_b_type
+         , olap_sys.w_common_pkg.get_digit_type(digit) r_digit_type 
+         , decode(preferencia_flag,'X','Y','N') r_preferencia_flag
+      from olap_sys.s_calculo_stats
+     where winner_flag is not null
+       and drawing_id = pn_ultimo_sorteo - pn_rango_historico  
+    )
+	  select
+		  drawing_id
+		, b_type
+		, listagg(digit_type, '-') within group (order by digit_type) as digit_type_str
+		, listagg(cnt, '-') within group (order by digit_type) as count_str
+		, preferencia_flag
+        , nvl((select r_digit_type from resultado_tbl where r_drawing_id=drawing_id and r_b_type=b_type),0) r_digit_type
+        , nvl((select r_preferencia_flag from resultado_tbl where r_drawing_id=drawing_id and r_b_type=b_type),'Z') r_preferencia_flag
+	from
+		nivel_n_tbl
+	group by drawing_id
+	    , b_type
+		, preferencia_flag;
+begin
+	for h in reverse 0..pn_rango_historico loop
+		dbms_output.put_line('sorteo_id: '||h);
+		for p in c_conteo_patrones (pn_ultimo_sorteo => pn_ultimo_sorteo
+                                  , pn_rango_historico => h) loop
+			dbms_output.put_line(p.drawing_id||' - '||p.b_type||' - '||p.digit_type_str||' - '||p.count_str||' - '||p.preferencia_flag||' - '||p.r_digit_type||' - '||p.r_preferencia_flag);
+			--!insertar registro en la tabla conteo_patrones
+			ins_conteo_patrones(pv_patron_type => CV$PATRON_NOMBRE
+							  , pn_sorteo_id   => p.drawing_id
+							  , pv_b_type	   => p.b_type
+							  , pv_j_digit_type  => p.digit_type_str
+							  , pv_j_digit_count_str => p.count_str
+							  , pv_j_preferencia_flag => p.preferencia_flag
+							  , pv_r_digit_type => p.r_digit_type
+							  , pv_r_preferencia_flag => p.r_preferencia_flag
+							  ); 
+		end loop;	
+	end loop;
+	
+	--!registra los match por posicion para un patron especifico
+	upd_conteo_patrones(pv_patron_type => CV$PATRON_NOMBRE);
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end patron_digit_type;
+
+
+--!registra los match por posicion para un patron especifico
+procedure upd_conteo_patrones_ca(pv_patron_type		varchar2) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_conteo_patrones_ca'; 
+	ln$default_no_match	 CONSTANT NUMBER := 100;
+	
+	cursor c_patrones (pv_patron_type		varchar2) is
+	select sorteo_id
+		 , b_type
+		 , atributo_float1 avg_ca
+		 , atributo_num1 r_ca
+	  from olap_sys.conteo_patrones
+	 where patron_type = pv_patron_type 
+	 order by b_type, sorteo_id; 	
+begin
+	for m in c_patrones (pv_patron_type => pv_patron_type) loop
+		dbms_output.put_line(m.sorteo_id
+		 ||' - '||m.b_type
+		 ||' - '||m.avg_ca
+		 ||' - '||m.r_ca);
+		if m.b_type = 'B1' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match1 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match1 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+		if m.b_type = 'B2' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match2 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match2 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+		if m.b_type = 'B3' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match3 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match3 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+		if m.b_type = 'B4' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match4 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match4 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+		if m.b_type = 'B5' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match5 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match5 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+		if m.b_type = 'B6' then
+			--!indica que el digito fue acertado
+			if m.r_ca > 0 then
+				if m.r_ca < m.avg_ca then
+					update olap_sys.conteo_patrones
+					   set match6 = 1	
+					 where patron_type = pv_patron_type 
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				else
+					update olap_sys.conteo_patrones
+					   set no_match6 = 1	
+					 where patron_type = pv_patron_type
+					   and sorteo_id = m.sorteo_id
+					   and b_type = m.b_type;
+				end if;
+			end if;
+		end if;
+
+	end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_conteo_patrones_ca;
+
+
+--!insertar registro en la tabla conteo_patrones
+procedure ins_conteo_patrones_ca(pv_patron_type		varchar2
+							   , pn_sorteo_id		number
+							   , pv_b_type			varchar2
+							   , pf_avg_ca			float
+							   , pn_r_ca	        number) is
+
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'ins_conteo_patrones_ca'; 
+	ln$ultimo_sorteo			  NUMBER := 0;
+begin
+	insert into olap_sys.conteo_patrones(patron_type
+									   , sorteo_id
+									   , b_type
+									   , atributo_float1
+									   , atributo_num1)
+	values(pv_patron_type
+		 , pn_sorteo_id
+		 , pv_b_type
+		 , pf_avg_ca
+		 , pn_r_ca);									
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end ins_conteo_patrones_ca;
+
+
+--!calcular el conteo de matches para patron ciclo de aparicion (CA)
+procedure patron_ca(pn_ultimo_sorteo	number
+                  , pn_rango_historico	number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'patron_ca';
+	CV$PATRON_NOMBRE	 CONSTANT VARCHAR2(30) := 'CA';
+	ln$rango_historico			  NUMBER := 0;
+	
+	cursor c_conteo_patrones (pn_ultimo_sorteo		number
+                            , pn_rango_historico	number) is
+	with nivel_n_tbl as (
+	select drawing_id
+		 , b_type
+		 , round(avg(ciclo_aparicion),1) avg_ca
+	  from olap_sys.s_calculo_stats
+	 where drawing_id = pn_ultimo_sorteo - pn_rango_historico 
+	 group by drawing_id
+		 , b_type
+	) 
+    , resultado_tbl as (
+    select drawing_id r_drawing_id
+         , b_type r_b_type
+         , ciclo_aparicion ca
+      from olap_sys.s_calculo_stats
+     where winner_flag is not null
+       and drawing_id = pn_ultimo_sorteo - pn_rango_historico  
+    )
+	  select
+		  drawing_id
+		, b_type
+		, avg_ca
+        , nvl((select ca from resultado_tbl where r_drawing_id=drawing_id and r_b_type=b_type),0) r_ca
+	from
+		nivel_n_tbl;
+begin
+	
+	for h in reverse 0..pn_rango_historico loop
+		dbms_output.put_line('sorteo_id: '||h);
+		for p in c_conteo_patrones (pn_ultimo_sorteo => pn_ultimo_sorteo
+                                  , pn_rango_historico => h) loop
+			dbms_output.put_line(p.drawing_id||' - '||p.b_type||' - '||p.avg_ca||' - '||p.r_ca);
+			--!insertar registro en la tabla conteo_patrones
+			ins_conteo_patrones_ca(pv_patron_type => CV$PATRON_NOMBRE
+							     , pn_sorteo_id   => p.drawing_id
+							     , pv_b_type	  => p.b_type
+							     , pf_avg_ca	  => p.avg_ca
+							     , pn_r_ca	      => p.r_ca); 
+		end loop;	
+	end loop;
+	
+	--!registra los match por posicion para un patron especifico
+	upd_conteo_patrones_ca(pv_patron_type => CV$PATRON_NOMBRE);
+	
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end patron_ca;
+
+
+--!calcular el conteo de matches para un patron definido
+procedure conteo_patrones_handler(pv_patron_type		varchar2 default 'DIGIT_TYPE'
+								, pn_rango_historico	number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'conteo_patrones_handler'; 
+	ln$ultimo_sorteo			  NUMBER := 0;
+begin
+	--!recuperando el ultimo ID del sorteo solo como referencia
+	select max(drawing_id)
+      into ln$ultimo_sorteo
+      from olap_sys.s_calculo_stats
+     where winner_flag is not null;
+	
+	--!limpiar la tabla
+	delete olap_sys.conteo_patrones;
+	
+	--!calcular el conteo de matches para patron digit_type
+	if upper(trim(pv_patron_type)) = 'DIGIT_TYPE' then
+		patron_digit_type(pn_ultimo_sorteo => ln$ultimo_sorteo
+						, pn_rango_historico => pn_rango_historico);
+	end if;
+
+	--!calcular el conteo de matches para patron ciclo de aparicion (CA)
+	if upper(trim(pv_patron_type)) = 'CA' then
+		patron_ca(pn_ultimo_sorteo => ln$ultimo_sorteo
+				, pn_rango_historico => pn_rango_historico);
+	end if;	
+	
+	commit;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end conteo_patrones_handler;
+
+
+--!calcular y actualizar el promedio de ciclo de aparicion en base a b_type
+--!para que se pueda utilizar como metrica para la seleccion de jjugadas
+procedure upd_avg_gl_ca(pn_drawing_id		number) is
+	LV$PROCEDURE_NAME    CONSTANT VARCHAR2(30) := 'upd_avg_gl_ca';
+
+	cursor c_sorteo_actual (pn_drawing_id		number) is
+	select drawing_id
+	     , b_type
+		 , round(avg(ciclo_aparicion),1) avg_ca
+	  from olap_sys.s_calculo_stats
+	 where drawing_id = pn_drawing_id
+	 group by drawing_id
+	     , b_type; 	
+begin
+	for k in c_sorteo_actual (pn_drawing_id => pn_drawing_id) loop
+		--!se calcula el promedio del ciclo de aparicion para que se pueda utilizar
+		--!como metrica para la seleccion de jugadas 
+		update olap_sys.s_calculo_stats
+		   set avg_ciclo_aparicion = k.avg_ca
+		 where drawing_id = k.drawing_id
+		   and b_type = k.b_type;
+	end loop;
+exception
+  when others then
+    dbms_output.put_line(olap_sys.W_COMMON_PKG.GV_CONTEXT_ERROR||' ~ '||LV$PROCEDURE_NAME||': '||sqlerrm||' ~ '||dbms_utility.format_error_stack());    
+    raise; 
+end upd_avg_gl_ca;
+								
 end w_gl_automaticas_pkg;
 /
 show errors;

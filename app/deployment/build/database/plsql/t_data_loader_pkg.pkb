@@ -1267,7 +1267,25 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 	                                       , pn_comb6         => i.comb6
 	                                       , x_err_code       => g_errorcnt
 	                                        );
-	                      
+	           
+				--!este commit guarda la informacion en las tablas principales
+				--!el siguiente commit se aplicara si todos los demas procesos son exitosos
+
+				--!actualizar la tabla gl_position_counts con los datos del sorteo ganador
+				olap_sys.w_gl_automaticas_pkg.upd_gl_pos_counts_handler(pn_drawing_id => i.gambling_id
+																	  , pn_comb1 => i.comb1
+																	  , pn_comb2 => i.comb2
+																	  , pn_comb3 => i.comb3
+																	  , pn_comb4 => i.comb4
+																	  , pn_comb5 => i.comb5
+																	  , pn_comb6 => i.comb6);
+				
+				--!calcular y actualizar el promedio de ciclo de aparicion en base a b_type
+				--!para que se pueda utilizar como metrica para la seleccion de jjugadas
+				olap_sys.w_gl_automaticas_pkg.upd_avg_gl_ca(pn_drawing_id => i.gambling_id);
+				
+				commit;
+				
 	           --[updating staging table tied to counts and min/max drawing_id based on comb_sum
 	           upd_s_comb_sum_min_max_stats (pv_gambling_type => p_gambling_type
 	                                       , pn_comb_sum      => i.gambling_id
@@ -1474,15 +1492,12 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s100');
 				--!insertar y actualizar el historico de digitos en base al id del sorteo
 				olap_sys.w_gl_automaticas_pkg.history_digit_info_handler(pn_drawing_id => i.gambling_id);
 
-				--!actualizar la tabla gl_position_counts con los datos del sorteo ganador
-				olap_sys.w_gl_automaticas_pkg.upd_gl_pos_counts_handler(pn_drawing_id => i.gambling_id
-																	  , pn_comb1 => i.comb1
-																	  , pn_comb2 => i.comb2
-																	  , pn_comb3 => i.comb3
-																	  , pn_comb4 => i.comb4
-																	  , pn_comb5 => i.comb5
-																	  , pn_comb6 => i.comb6);
-						 
+				--!actualizar las predicciones en la tabla S_GL_MAPAS_FRE_LT_CNT			
+				olap_sys.w_gl_automaticas_pkg.comparativo_lt_handler;
+				
+				--!actualizar la bandera para el LT ganador en la tabla s_gl_mapas_fre_lt_cnt
+				olap_sys.w_gl_automaticas_pkg.upd_lt_handler(pn_drawing_id => i.gambling_id);				
+				
 			   if mod(g_rowcnt,100) = 0 then
 	              commit;
 	           end if;
@@ -1528,7 +1543,9 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s110. gn$err_code: '||gn$err_code);
                 , p_attribute2     => p_gambling_type
                 , p_attribute7     => sqlerrm
                  );
-        rollback;
+        --!este commit asegura que todos los cambios realizados se guarden aun cuando se haya 
+		--!producido un error
+		commit;
         raise;              
   END main_p;
 
@@ -1756,7 +1773,6 @@ dbms_output.put_line(LV$PROCEDURE_NAME||' s110. gn$err_code: '||gn$err_code);
                                                     , x_err_code      => gn$err_code
                                                     , x_err_msg       => gv$err_msg
                                                      );
-
   exception
     when dup_val_on_index then
         p_errorcnt := p_errorcnt + 1; 

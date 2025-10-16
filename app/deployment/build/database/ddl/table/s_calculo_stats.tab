@@ -1,0 +1,98 @@
+rem table_name   : s_calculo_stats
+rem table_type   : stage table
+rem creation_date: 03/04/2016
+rem purpose      : store metadata used for storing stats provided by gigamelate software
+
+prompt creating s_metadata_select_details table
+ 
+create table olap_sys.s_calculo_stats 
+(drawing_type	      varchar2(10)  not null,
+ drawing_id	      number        not null,
+ b_type               varchar2(2)   not null,
+ digit                number        not null,
+ color_ubicacion      number(1)     not null,
+ ubicacion            number,
+ color_ley_tercio     number(1),
+ ley_tercio           number,
+ ciclo_aparicion      number,
+ pronos_ciclo         number,
+ winner_flag          varchar2(1),
+ prime_number_flag    number(1),
+ inpar_number_flag    number(1),
+ par_number_flag      number(1),
+ ca_ranking           varchar2(2),
+ preferencia_flag     varchar2(1), 
+ rango_ley_tercio     number,
+ color_rango_ley_tercio varchar2(1),
+ chng_posicion        varchar2(2),	
+ chng_ubicacion		  varchar2(2),
+ chng_ley_tercio	  varchar2(2),	
+ chng_ciclo_aparicion varchar2(2),
+ chng_pronos_ciclo	  varchar2(2),
+ chng_preferencia_flag	  varchar2(2),
+ chng_cambios          varchar2(2),
+ preferencia_num      number(1),
+ avg_ciclo_aparicion  float,
+ created_by	      	  varchar2(30)  default USER not null,
+ creation_date 	      date          default SYSDATE not null,
+ updated_by           varchar2(30)  default USER,
+ updated_date         date          default SYSDATE 
+ ) tablespace olap_small_data_tbl
+/
+comment on column s_calculo_stats.drawing_type is 'flag used for gambling_type'
+/
+comment on column s_calculo_stats.drawing_id is 'FK from table w_comb_setup_headers_fs'
+/
+comment on column s_calculo_stats.b_type is 'Allowed values B1 to B6'
+/
+comment on column s_calculo_stats.digit is 'Digits for drawing'
+/
+comment on column s_calculo_stats.color_ubicacion is '1:Red, 2:Green, 3:Blue'
+/
+comment on column s_calculo_stats.ubicacion is 'Manual input for ubicacion'
+/
+comment on column s_calculo_stats.color_ley_tercio is '1:Red, 2:Green, 3:Blue'
+/
+comment on column s_calculo_stats.ley_tercio is 'Manual input for ley tercio'
+/
+comment on column s_calculo_stats.ciclo_aparicion is 'Manual input for ciclo de aparicion stats'
+/
+comment on column s_calculo_stats.pronos_ciclo is 'Manual input for pronosticos por ciclo stats'
+/
+comment on column s_calculo_stats.winner_flag is 'Flag to indicate when a digit belong to a winner drawing'
+/
+comment on column s_calculo_stats.prime_number_flag is 'Flag is set equal to 1 to indicate when a digit is a prime number. Otherwise, flag is equal to 0'
+/
+comment on column s_calculo_stats.inpar_number_flag is 'Flag is set equal to 1 to indicate when a digit is a impar number. Otherwise, flag is equal to 0'
+/
+comment on column s_calculo_stats.par_number_flag is 'Flag is set equal to 1 to indicate when a digit is a par number. Otherwise, flag is equal to 0'
+/
+comment on column s_calculo_stats.preferencia_flag is 'Flag to set the preference when selecting digits'
+/
+comment on column s_calculo_stats.rango_ley_tercio is 'Rango para ley del tercio. B1=H:1-3,M:4-6,L:>=7;B2=H:1-3,M:4-6,L:>=7;B3=H:1-5,M:6-10,L:>=11;B4=H:1-6,M:7-12,L:>=13;B5=H:1-5,M:6-10,L:>=11;B6=H:1-3,M:4-6,L:>=7'
+/
+comment on column s_calculo_stats.color_rango_ley_tercio is 'Color rango H (High), M (Medium), L (Low)'
+/
+comment on column s_calculo_stats.chng_posicion is 'Y si se detecto un cambio en la posicion del digito'
+/
+comment on column s_calculo_stats.chng_ubicacion is 'Y si se detecto un cambio en el valor de la ubicacion'
+/
+comment on column s_calculo_stats.chng_ley_tercio is 'Y si se detecto un cambio en el valor de la ley del tercio'
+/
+comment on column s_calculo_stats.chng_ciclo_aparicion is 'Y si se detecto un cambio en el valor del ciclo de aparicion'
+/
+comment on column s_calculo_stats.chng_pronos_ciclo is 'Y si se detecto un cambio en el valor del pronostico por ciclo'
+/
+comment on column s_calculo_stats.chng_preferencia_flag is 'Y si se detecto un cambio en el valor de preferencia flag'
+/
+comment on column s_calculo_stats.chng_cambios is 'N si no hay cambios en ninguno de las columnas chng_*. De lo contrario sera nulo'
+/
+comment on column s_calculo_stats.created_by is 'username who created the record'
+/
+comment on column s_calculo_stats.creation_date is 'date when the record was created'
+/
+comment on column s_calculo_stats.updated_by is 'username who created the updated'
+/
+comment on column s_calculo_stats.updated_date is 'date when the record was created'
+/
+show errors;
