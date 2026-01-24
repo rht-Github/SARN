@@ -748,99 +748,86 @@ select drawing_id id, b_type, digit, color_ubicacion cfr, ubicacion vfr, color_l
      --!se le agregan 2 unidades al avg para extender el rango de seleccion de jugadas
      , case when b_type in ('B1','B2','B5','B6') then avg_ciclo_aparicion + 2 else avg_ciclo_aparicion end avg_ca
   from olap_sys.s_calculo_stats
- where preferencia_flag is not null 
+ where (pronos_ciclo is not null or preferencia_flag is not null) 
    and drawing_id = (select max_id from resultado_tbl) 
 ) --select * from gl_tbl;
 , e1_b1_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B1'
-   and rlt between 1 and 6
+--   and rlt between 1 and 6
 ) --select * from e1_b1_tbl;
 , e1_b2_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B2'
-   and rlt between 1 and 10
+--   and rlt between 1 and 9
 ) --select * from e1_b2_tbl;
 , e1_b3_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B3'
-   and rlt between 1 and 12
+--   and rlt between 1 and 10
 ) --select * from e1_b3_tbl;
 , e1_b4_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B4'
-   and rlt between 1 and 11 
+--   and rlt between 1 and 10 
 ) --select * from e1_b4_tbl;
 , e1_b5_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B5'
-   and rlt between 1 and 10 
+--   and rlt between 1 and 9 
 ) --select * from e1_b5_tbl;
 , e1_b6_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B6'
-   and rlt between 1 and 6
-   and chg = '.'
-) --select * from e1_b6_tbl;
-, b1_tbl as (
-select 'B1' b_type, pos1 pos from olap_sys.gl_position_counts where bayes1_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
-union 
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B1' and drawing_id = (select max_id from resultado_tbl) 
-union 
+--   and rlt between 1 and 6
+) select * from e1_b6_tbl;
+, b1_merge_tbl as (
+select 'B1' b_type, pos1 pos from olap_sys.gl_position_counts where bayes1_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
+union
 select b_type, digit from e1_b1_tbl
 )
-, b2_tbl as (
-select 'B2' b_type, pos2 pos from olap_sys.gl_position_counts where bayes2_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+, b2_merge_tbl as (
+select 'B2' b_type, pos2 pos from olap_sys.gl_position_counts where bayes2_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B2' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b2_tbl
 )
-, b3_tbl as (
+, b3_merge_tbl as (
 select 'B3' b_type, pos3 pos from olap_sys.gl_position_counts where bayes3_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B3' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b3_tbl
 )
-, b4_tbl as (
-select 'B4' b_type, pos4 pos from olap_sys.gl_position_counts where bayes4_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+, b4_merge_tbl as (
+select 'B4' b_type, pos4 pos from olap_sys.gl_position_counts where bayes4_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B4' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b4_tbl
 )
-, b5_tbl as (
-select 'B5' b_type, pos5 pos from olap_sys.gl_position_counts where bayes5_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+, b5_merge_tbl as (
+select 'B5' b_type, pos5 pos from olap_sys.gl_position_counts where bayes5_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B5' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b5_tbl
 )
-, b6_tbl as (
-select 'B6' b_type, pos6 pos from olap_sys.gl_position_counts where bayes6_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+, b6_merge_tbl as (
+select 'B6' b_type, pos6 pos from olap_sys.gl_position_counts where bayes6_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B6' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b6_tbl
 )
-select b_type, pos from b1_tbl 
+select b_type, pos from b1_merge_tbl
 union
-select b_type, pos from b2_tbl 
+select b_type, pos from b2_merge_tbl
 union
-select b_type, pos from b3_tbl 
+select b_type, pos from b3_merge_tbl
 union
-select b_type, pos from b4_tbl 
+select b_type, pos from b4_merge_tbl
 union
-select b_type, pos from b5_tbl 
+select b_type, pos from b5_merge_tbl
 union
-select b_type, pos from b6_tbl 
+select b_type, pos from b6_merge_tbl
 order by b_type, pos
 ;
 
@@ -877,39 +864,37 @@ select drawing_id id, b_type, digit, color_ubicacion cfr, ubicacion vfr, color_l
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B1'
-   and rlt between 1 and 6
+--   and rlt between 1 and 6
 ) --select * from e1_b1_tbl;
 , e1_b2_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B2'
-   and rlt between 1 and 10
+--   and rlt between 1 and 9
 ) --select * from e1_b2_tbl;
 , e1_b3_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B3'
-   and rlt between 1 and 12
+--   and rlt between 1 and 10
 ) --select * from e1_b3_tbl;
 , e1_b4_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
-  
  where b_type = 'B4'
-   and rlt between 1 and 11 
+--   and rlt between 1 and 10 
 ) --select * from e1_b4_tbl;
 , e1_b5_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B5'
-   and rlt between 1 and 10 
+--   and rlt between 1 and 9 
 ) --select * from e1_b5_tbl;
 , e1_b6_tbl as (
 select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
   from gl_tbl
  where b_type = 'B6'
-   and rlt between 1 and 6
-   and chg = '.'
+--   and rlt between 1 and 6
 ) --select * from e1_b6_tbl;
 --![[informacion de patrones de LT]]
 , lt_details_tbl as (
@@ -952,48 +937,36 @@ select a.aciertos_accum
    and a.r_cnt >= (select avg_r_cnt from avg_aciertos_tbl) 
  order by a.aciertos_accum
 ) --select aciertos_accum from distinct_aciertos_tbl;
-, b1_tbl as (
-select 'B1' b_type, pos1 pos from olap_sys.gl_position_counts where bayes1_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
-union 
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B1' and drawing_id = (select max_id from resultado_tbl) 
-union 
-select b_type, digit from e1_b1_tbl
-)
-, b2_tbl as (
-select 'B2' b_type, pos2 pos from olap_sys.gl_position_counts where bayes2_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+, b1_merge_tbl as (
+select 'B1' b_type, pos1 pos from olap_sys.gl_position_counts where bayes1_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B2' and drawing_id = (select max_id from resultado_tbl) 
-union 
+select b_type, digit from e1_b1_tbl
+) --select * from b1_merge_tbl;
+, b2_merge_tbl as (
+select 'B2' b_type, pos2 pos from olap_sys.gl_position_counts where bayes2_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
+union
 select b_type, digit from e1_b2_tbl
-)
-, b3_tbl as (
+) --select * from b2_merge_tbl;
+, b3_merge_tbl as (
 select 'B3' b_type, pos3 pos from olap_sys.gl_position_counts where bayes3_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B3' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b3_tbl
-)
-, b4_tbl as (
-select 'B4' b_type, pos4 pos from olap_sys.gl_position_counts where bayes4_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+) --select * from b3_merge_tbl;
+, b4_merge_tbl as (
+select 'B4' b_type, pos4 pos from olap_sys.gl_position_counts where bayes4_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B4' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b4_tbl
-)
-, b5_tbl as (
-select 'B5' b_type, pos5 pos from olap_sys.gl_position_counts where bayes5_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+) --select * from b4_merge_tbl;
+, b5_merge_tbl as (
+select 'B5' b_type, pos5 pos from olap_sys.gl_position_counts where bayes5_general_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B5' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b5_tbl
-)
-, b6_tbl as (
-select 'B6' b_type, pos6 pos from olap_sys.gl_position_counts where bayes6_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl) 
+) --select * from b5_merge_tbl;
+, b6_merge_tbl as (
+select 'B6' b_type, pos6 pos from olap_sys.gl_position_counts where bayes6_b_type_flag = 'Y' and sorteo = (select max_id from resultado_tbl)
 union
-select b_type, next_digit from olap_sys.next_digit_v where b_type = 'B6' and drawing_id = (select max_id from resultado_tbl) 
-union 
 select b_type, digit from e1_b6_tbl
-)
+) --select * from b6_merge_tbl;
 --![[capa de transformaciones]]
 , output_tbl as (
 select ia1, ia2, ia3, ia4, ia5, ia6
@@ -1017,60 +990,30 @@ select ia1, ia2, ia3, ia4, ia5, ia6
      , aciertos_accum, digito_cnt, ia6_cnt, 'N' jugar_flag, ca_sum, comb_sum
      , case when chg1 = '.' then 0 else 1 end + case when chg2 = '.' then 0 else 1 end + case when chg3 = '.' then 0 else 1 end + case when chg4 = '.' then 0 else 1 end + case when chg5 = '.' then 0 else 1 end + case when chg6 = '.' then 0 else 1 end sum_chg
      , list_id, 0 terminacion_str, 0 t_cnt
+     , decode(mod(ia1,3),0,1,0) + decode(mod(ia2,3),0,1,0) + decode(mod(ia3,3),0,1,0) + decode(mod(ia4,3),0,1,0) + decode(mod(ia5,3),0,1,0) + decode(mod(ia6,3),0,1,0) m3_sum
+     , decode(mod(ia1,4),0,1,0) + decode(mod(ia2,4),0,1,0) + decode(mod(ia3,4),0,1,0) + decode(mod(ia4,4),0,1,0) + decode(mod(ia5,4),0,1,0) + decode(mod(ia6,4),0,1,0) m4_sum
+     , decode(mod(ia1,5),0,1,0) + decode(mod(ia2,5),0,1,0) + decode(mod(ia3,5),0,1,0) + decode(mod(ia4,5),0,1,0) + decode(mod(ia5,5),0,1,0) + decode(mod(ia6,5),0,1,0) m5_sum
+     , decode(mod(ia1,7),0,1,0) + decode(mod(ia2,7),0,1,0) + decode(mod(ia3,7),0,1,0) + decode(mod(ia4,7),0,1,0) + decode(mod(ia5,7),0,1,0) + decode(mod(ia6,7),0,1,0) m7_sum
   from olap_sys.gl_automaticas_detail
  where 1=1
    --![[rango de aciertos mas amplio]]
-   and aciertos_accum in (select aciertos_accum from distinct_aciertos_tbl)
+--#   and aciertos_accum in (select aciertos_accum from distinct_aciertos_tbl)
    --!condicion temporal mientras se incrementa el aciertos_accum. una vez que sea lo suficientemente grande el conjunto se comentara esta condicion y se descomentara la condicion de arriba
    and aciertos_accum > 1
    --![[terminaciones]]
    and (t1_cnt, t2_cnt) in ((4,2),(6,0))
-   --![[patron de primos-pares-impares]]
-   --![[1:primo, 2:par, 3:impar]]
---   and (olap_sys.w_common_pkg.get_digit_type(ia3) = 2
---    or olap_sys.w_common_pkg.get_digit_type(ia4) = 2
---    or olap_sys.w_common_pkg.get_digit_type(ia5) = 2)
---   and olap_sys.w_common_pkg.get_digit_type(ia6) = 3
-   --![[patrones de numeros mas frecuentes]]
---   and digito_cnt > 2
-   --![[3 a 6 numeros pares]]
-   and par_cnt > 1
-   --![[numeros repetidos en base al sorteo anterior]]
---#   and repetidos_cnt < 3   
-   --![[numeros favorables]]
---   and ((pf1=1 and pf2=1) or (pf5=1 and pf6=1))    
    --![[gl_position_counts & next_digit_v & informacion de gigaloterias]]
-   and IA1 in (select pos from b1_tbl)
-   and IA2 in (select pos from b2_tbl)
-   and IA3 in (select pos from b3_tbl)
-   and IA4 in (select pos from b4_tbl)
-   and IA5 in (select pos from b5_tbl)
-   and IA6 in (select pos from b6_tbl)
-/*   and IA1 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B1' and sorteo = (select max_id from resultado_tbl))
-   and IA2 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B2' and sorteo = (select max_id from resultado_tbl))
-   and IA3 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B3' and sorteo = (select max_id from resultado_tbl))
-   and IA4 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B4' and sorteo = (select max_id from resultado_tbl))
-   and IA5 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B5' and sorteo = (select max_id from resultado_tbl))
-   and IA6 in (select digit from olap_sys.mr_position_counts_v where b_type = 'B6' and sorteo = (select max_id from resultado_tbl))
-*/ 
+   and IA1 in (select pos from b1_merge_tbl)
+   and IA2 in (select pos from b2_merge_tbl)
+   and IA3 in (select pos from b3_merge_tbl)
+   and IA4 in (select pos from b4_merge_tbl)
+   and IA5 in (select pos from b5_merge_tbl)
+   and IA6 in (select pos from b6_merge_tbl)
    --<<lista de predicciones por decena>>
---#   and (D1,D2,D3,D4,D5,D6) in (select pred1, pred2, pred3, pred4, pred5, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo,'DECENA') > 0 and prediccion_sorteo = (select max_id from resultado_tbl))     
---#   and (D1,D4,D6) in (select distinct pred1, pred4, pred6 from olap_sys.predicciones_all where REGEXP_LIKE(prediccion_tipo, '^10\.[0-9]{1,2}\.DECENA$') and prediccion_sorteo = (select max_id from resultado_tbl))     
-   and (D1,D3,D4,D6) in (select distinct pred1, pred3, pred4, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo, 'DECENA') > 0  and PRED3 = '10-19' and PRED4 = '20-29' and prediccion_sorteo = (select max_id from resultado_tbl))     
-   --![[CA esta por debajo o por arriba del promedio]]
-   --and ((avg_ca_flag1, avg_ca_flag2) in (('B','B')) or (avg_ca_flag5, avg_ca_flag6) in (('B','B')))
---   and avg_ca_flag1 = 'B'
---   and avg_ca_flag6 = 'B'
-   --![[patron de posicion 2 al 5]]
+   and (D1,D2,D3,D4,D5,D6) in (select pred1, pred2, pred3, pred4, pred5, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo,'DECENA') > 0 and prediccion_sorteo = (select max_id from resultado_tbl))        
+--   and (D1,D3,D4,D6) in (select distinct pred1, pred3, pred4, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo, 'DECENA') > 0  and prediccion_sorteo = (select max_id from resultado_tbl))     
    and patron_25_cnt > 2
    and patron_25_accum > 3
---#   and PF4 = 0
-   and ia1 in (6,4,5)
-   and ia2 in (6,8,9,10,15)
---   and ia3 in (20,15,21)
---   and ia4 in (30,28,25,27)
-   and ia5 in (27,36,28,30,33,35)
-   and ia6 in (39,38,35)
 )
 select distinct ia1, ia2, ia3, ia4, ia5, ia6, 
                  fr1, fr2, fr3, fr4, fr5, fr6, 
@@ -1078,20 +1021,23 @@ select distinct ia1, ia2, ia3, ia4, ia5, ia6,
                  avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6, 
                  d1, d2, d3, d4, d5, d6, caso_id,
                  pf1, pf2, pf3, pf4, pf5, pf6, 
-                 pn_cnt, none_cnt, par_cnt, t1_cnt, t2_cnt, 
+                 pn_cnt, none_cnt, par_cnt, m3_sum, m4_sum, m5_sum, m7_sum, t1_cnt, t2_cnt, 
                  decena, sorteo_actual, repetidos_cnt, 
                  patron_25_cnt, patron_25_accum, patron_6_accum,  
                  chg1, chg2, chg3, chg4, chg5, chg6, 
                  aciertos_accum, 0 digito_cnt, 0 ia6_cnt, jugar_flag, ca_sum, comb_sum, pf_sum
   from output_tbl
  where 1=1
+--   and m3_sum = 2
+--   and m5_sum = 1
+--   and m7_sum = 1
    --!filtrar jugadas cuyos digitos no han tenido cambios en su posicion
    and sum_chg in (0,1)
    --![[numeros favorables]]
    and pf_sum in (3,4,5,6)
    --!solo jugadas que esten el patron de ley del tercio
    --!esta condicion es sustituida por lt_summary de arriba
-   and (lt1, lt2, lt3, lt4, lt5, lt6) in (select lt1, lt2, lt3, lt4, lt5, lt6 from lt_details_tbl) 
+--#   and (lt1, lt2, lt3, lt4, lt5, lt6) in (select lt1, lt2, lt3, lt4, lt5, lt6 from lt_details_tbl) 
  order by ia1, ia2, ia3, ia4, ia5, ia6 --repetidos_cnt desc, digito_cnt desc, ia6_cnt desc, 
  ;    
 

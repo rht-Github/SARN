@@ -6,153 +6,6 @@ select *
  order by gambling_id;
 
 
---!recupera las predicciones para el sorteo a jugar != '15.GL'
-with siguiente_sorteo_tbl as (
-select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
-)
-, output_tbl as (
-select distinct prediccion_nombre, 0 muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0, match_cnt, 0 match_pct,
-       match1, match2, match3, match4, match5, match6, match7, match8, match9, match0,
-       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num
-  FROM olap_sys.predicciones_all
- WHERE prediccion_tipo != '15.GL'
-   and prediccion_sorteo = (select max_id from siguiente_sorteo_tbl)-1
-/*union
-select prediccion_nombre, 0 muestra, prediccion_sorteo, replace(prediccion_tipo,'_2',null) prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6,
-       res1, res2, res3, res4, res5, res6, match_cnt, 0 match_pct,
-       match1, match2, match3, match4, match5, match6,
-       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num
-  from olap_sys.predicciones_all
- where prediccion_sorteo = (select max_id from siguiente_sorteo_tbl)-1 */
- order by prediccion_sorteo desc, prediccion_tipo_num, prediccion_nombre
-)
-select prediccion_nombre, muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0,
-       match_cnt, match_pct, match1, match2, match3, match4, match5, match6, match7, match8, match9, match0
-  from output_tbl
-;
-
---!setear el rango a los digitos de las predicciones
-declare
-    cursor c_predicciones is
-    with siguiente_sorteo_tbl as (
-    select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
-    )
-    , predicciones_tbl as (
-    select prediccion_sorteo, prediccion_tipo||'-'||b_type prediccion_tipo, b_type, 
-           to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num, to_number(PRES1) pres1, to_number(pred1) pred1
-      FROM olap_sys.predicciones_all
-     WHERE prediccion_tipo = '15.GL'
-       and prediccion_sorteo = (select max_id from siguiente_sorteo_tbl)
-    -- order by b_type, rank_pres--, pres1 desc, pred1_num
-    ) --select * from predicciones_tbl;
-    , sum_prediccion_tbl as (
-    select prediccion_sorteo, prediccion_tipo, b_type,
-           pred1, sum(pres1) sum_pres 
-      from predicciones_tbl 
-     group by prediccion_sorteo, prediccion_tipo, b_type,
-           pred1
-     order by b_type, sum_pres desc       
-    ) --select * from sum_prediccion_tbl;
-    , rank_prediccion_tbl as (
-    select prediccion_sorteo, prediccion_tipo, b_type, pred1, round(sum_pres,2) sum_pres, rank() over (partition by b_type order by sum_pres desc) rank_pres
-      from sum_prediccion_tbl 
-    ) select * 
-       from rank_prediccion_tbl 
-      order by b_type, rank_pres;
-begin
-        update olap_sys.predicciones_all
-           set pred2 = '0.0'
-             , pred3 = '0'
-         where prediccion_sorteo = (select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null)
-           and prediccion_tipo = '15.GL';
-
-    for p in c_predicciones loop
-        update olap_sys.predicciones_all
-           set pred2 = to_char(p.sum_pres)
-             , pred3 = to_char(p.rank_pres)
-         where prediccion_sorteo = p.prediccion_sorteo
-           and prediccion_tipo = '15.GL'
-           and b_type = p.b_type
-           and pred1 = to_char(p.pred1);
-    end loop;
-    commit;
-end;
-/
-
-SELECT *
-  FROM olap_sys.predicciones_all
- WHERE prediccion_tipo = '15.GL'
-   and prediccion_sorteo = 1514
---   and b_type = 'B5'
- order by b_type, to_number(pred3)
-;
-
---!ordenamiento de las predicciones por rank y probabilidad
-with siguiente_sorteo_tbl as (
-select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
-)
-, output_tbl as (
-select distinct prediccion_nombre, 0 muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, to_number(pred3) rank_pred, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0, match_cnt, 0 match_pct,
-       match1, match2, match3, match4, match5, match6, match7, match8, match9, match0,
-       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num
-  FROM olap_sys.predicciones_all
- WHERE prediccion_tipo = '15.GL'
-   and prediccion_sorteo = (select max_id from siguiente_sorteo_tbl)
-) 
-select prediccion_nombre, muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, rank_pred, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0,
-       match_cnt, match_pct, match1, match2, match3, match4, match5, match6, match7, match8, match9, match0
-  from output_tbl
--- where to_number(rank_pred) < 9 
- order by rank_pred
-;
-
-###### --!recupera historico de las predicciones con mas de 2 aciertos
-with siguiente_sorteo_tbl as (
-select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
-)
-, output_tbl as (
-select prediccion_nombre,  0 muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0, match_cnt, 0 match_pct,
-       match1, match2, match3, match4, match5, match6, match7, match8, match9, match0,
-       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num 
-  from olap_sys.predicciones_all 
- where 1=1
---   and prediccion_sorteo < (select max_id from siguiente_sorteo_tbl) 
---   and prediccion_sorteo > (select max_id from siguiente_sorteo_tbl) - 20
-   and match_cnt > 2
-   and prediccion_tipo not in ('6.CHNG','12.TERMINACIONES')
-   and prediccion_sorteo >= (select max(prediccion_sorteo) from olap_sys.predicciones_all) - 1
-/*union all
-select prediccion_nombre,  0 muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0, match_cnt, 0 match_pct,
-       match1, match2, match3, match4, match5, match6, match7, match8, match9, match0,
-       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num 
-  from olap_sys.predicciones_all 
- where 1=1
-   and match_cnt > 0
-   and (instr(prediccion_tipo,'14.') > 0 or instr(prediccion_tipo,'13.') > 0)
-   and prediccion_sorteo >= (select max(prediccion_sorteo) from olap_sys.predicciones_all) - 10
- order by match_cnt desc, prediccion_tipo_num, prediccion_sorteo desc */
-)
-select prediccion_nombre, muestra, prediccion_sorteo, prediccion_tipo, 
-       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
-       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0,
-       match_cnt, match_pct, match1, match2, match3, match4, match5, match6, match7, match8, match9, match0
-  from output_tbl
-;  
-
-
 ##### Ingesta de datos en tabla olap_sys.gl_lt_counts
 --!Tab Name: COMPARATIVO LT
  SET SERVEROUTPUT ON
@@ -179,6 +32,7 @@ END;
 /
 
 --!regresa los conteos de LT agrupados por b_type
+--!Tab Name: COMPARATIVO LT (actual)
 with resultado_tbl as (
 select max(gambling_id) max_id from olap_sys.sl_gamblings
 ) 
@@ -213,6 +67,7 @@ select distinct gl_type
 ;
 
 --!regresa los conteos de LT agrupados por b_type del sorteo anterior
+--!Tab Name: COMPARATIVO LT (previo)
 with resultado_tbl as (
 select max(gambling_id)-1 prev_id from olap_sys.sl_gamblings
 ) 
@@ -234,6 +89,7 @@ select distinct gl_type
 ;
 
 --!regresa los conteos de LT agrupados por b_type basados en numeros impares, pares y primos
+--!Tab Name: COMPARATIVO LT DTL
 with resultado_tbl as (
 select max(gambling_id) max_id from olap_sys.sl_gamblings
 ) 
@@ -315,6 +171,49 @@ select *
  order by o_b_type, o_clt desc, o_tipo_num, j_cnt desc;
 
 
+--!Tab Name: COMPARATIVO_LT_CNT
+with resultado_tbl as (
+select max(gambling_id)-1 prev_id from olap_sys.sl_gamblings
+) 
+, output_tbl as (
+select distinct gl_type
+     , drawing_id_end id_end
+     , b_type_end
+     , decode(gl_color_end,1,'R',2,'G',3,'B') gl_color_end
+     , gl_cnt_end
+--     , nvl(predicted_manual_end,'.') predicted_manual_end
+     , case when length(predicted_flag_end) = 1 then 'P1' else nvl(predicted_flag_end,'.') end predicted_flag_end
+     , nvl(winner_flag_end,'.') winner_flag_end
+     , gl_color_end borrar
+  from OLAP_SYS.S_GL_MAPAS_FRE_LT_CNT
+ where gl_type = 'LT'
+--   and drawing_id_ini = (select max_id from resultado_tbl)
+--   and drawing_id_end = (select prev_id from resultado_tbl)
+   and winner_flag_end is not null
+)
+, group_tbl as (
+select b_type_end
+     , predicted_flag_end
+     , winner_flag_end
+     , count(1) r_cnt
+  from output_tbl
+-- where b_type_end = 'B6' 
+ group by b_type_end
+     , predicted_flag_end
+     , winner_flag_end
+)
+select (select min(id_end) from output_tbl) id_min 
+     , (select max(id_end) from output_tbl) id_max
+     , (select max(id_end) from output_tbl) - (select min(id_end) from output_tbl) rango
+     , b_type_end
+     , predicted_flag_end
+     , winner_flag_end
+     , r_cnt
+  from group_tbl
+order by b_type_end, r_cnt desc    
+;  
+
+
 --!mostrar las predicciones para cada b_type para el ultimo sorteo
 --!solo debe ejecutarse en caso de que el query anterior no muestre las predicciones
 set serveroutput on
@@ -337,68 +236,322 @@ declare
     ln$drawing_id  number := 0;
 begin
     select max(drawing_id) into ln$drawing_id from olap_sys.s_calculo_stats;
-    olap_sys.w_gl_automaticas_pkg.upd_terminacion_cnt_handler(pn_drawing_id	=> ln$drawing_id);
-    olap_sys.w_gl_automaticas_pkg.upd_gl_automaticas_handler(pn_drawing_id => ln$drawing_id
-                                                  , pv_ca_comb_flag => 'Y');
-    olap_sys.w_gl_automaticas_pkg.aciertos_repetidos_handler(pn_drawing_id => ln$drawing_id);  
-    olap_sys.w_gl_automaticas_pkg.upd_avg_gl_ca(pn_drawing_id => ln$drawing_id);  
+    --olap_sys.w_gl_automaticas_pkg.upd_terminacion_cnt_handler(pn_drawing_id	=> ln$drawing_id);
+    --olap_sys.w_gl_automaticas_pkg.upd_gl_automaticas_handler(pn_drawing_id => ln$drawing_id
+    --                                              , pv_ca_comb_flag => 'Y');
+    -- 0: execute all, 1: execute contar_repetidos, 2: execute contar_aciertos
+    --olap_sys.w_gl_automaticas_pkg.aciertos_repetidos_handler(pn_drawing_id => ln$drawing_id, pv_execution_type=>1);  
+    --olap_sys.w_gl_automaticas_pkg.upd_avg_gl_ca(pn_drawing_id => ln$drawing_id);  
     olap_sys.w_gl_automaticas_pkg.get_patron_handler;
-    commit;                                                  
+    --olap_sys.w_new_pick_panorama_pkg.patron_primo_impar_par_handler;
+    --commit;                                                  
 end;
 /
 
---!contador de aciertos
-select sorteo_actual
-     , aciertos_cnt
-     , digito_cnt
-     , ia6_cnt
-     , count(1) r_cnt
-  from olap_sys.gl_automaticas_detail
- where aciertos_cnt > 0
-   and digito_cnt > 0
- group by sorteo_actual
-     , aciertos_cnt
-     , digito_cnt
-     , ia6_cnt
- order by aciertos_cnt desc, r_cnt
-;  
 
---!aciertos en funcion de numeros repetidos
-select sorteo_actual
-     , aciertos_cnt
-     , repetidos_cnt
-     , count(1) r_cnt
-  from olap_sys.gl_automaticas_detail
- where aciertos_cnt > 0
-   and digito_cnt > 0
- group by sorteo_actual
-     , aciertos_cnt
-     , repetidos_cnt
- order by aciertos_cnt desc, r_cnt desc
-;  
-
---!aciertos en funcion de acumulado de aciertos
-select sorteo_actual
-     , case when aciertos_accum between 1 and 5 then '1-5' else case when aciertos_accum between 6 and 10 then '6-10' else case when aciertos_accum between 11 and 15 then '11-15' else case when aciertos_accum between 16 and 20 then '16-20' else '>21' end end end end aciertos_accum
-     , count(1) r_cnt
-  from olap_sys.gl_automaticas_detail
- where aciertos_cnt > 0
- group by sorteo_actual
-     , case when aciertos_accum between 1 and 5 then '1-5' else case when aciertos_accum between 6 and 10 then '6-10' else case when aciertos_accum between 11 and 15 then '11-15' else case when aciertos_accum between 16 and 20 then '16-20' else '>21' end end end end
- order by r_cnt desc
-;  
+--<<<conteo de posiciones>>>
+--!Tab Name: CONTEO
+--Nota: el proceso que hace estos conteos debe estar basado en la vista gl_automaticas_detail_v. reevisar este proceso
+select *      
+  from olap_sys.gl_position_counts_v
+ order by seq 
+;
 
 
---!aciertos en funcion de patron de la posicion 2-5
-select sorteo_actual
-     , PATRON_25_CNT
-     , count(1) r_cnt
-  from olap_sys.gl_automaticas_detail
- where aciertos_cnt > 0
- group by sorteo_actual
-     , PATRON_25_CNT
- order by r_cnt desc
-;  
+--<<<conteo de posiciones_log>>>
+--!Tab Name: CONTEO_STATS
+--!informacion sumarizada
+select *
+  from olap_sys.gl_position_counts_log_v
+;
+
+--<<<conteo de posiciones_log>>>
+--!Tab Name: CONTEO_STATS
+--!informacion detallada
+with sorteo_list_tbl as (
+select distinct sorteo sorteo_list
+  from olap_sys.gl_position_counts_log
+)
+, sorteo_actual_tbl as (
+select sorteo_list curr_sorteo
+     , nvl((select curr.pos1 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos1 > 0 and curr.dif1=0),0) pos1
+     , nvl((select curr.pos2 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos2 > 0 and curr.dif2=0),0) pos2
+     , nvl((select curr.pos3 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos3 > 0 and curr.dif3=0),0) pos3
+     , nvl((select curr.pos4 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos4 > 0 and curr.dif4=0),0) pos4
+     , nvl((select curr.pos5 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos5 > 0 and curr.dif5=0),0) pos5
+     , nvl((select curr.pos6 from olap_sys.gl_position_counts_log curr where curr.sorteo = sorteo_list and curr.pos6 > 0 and curr.dif6=0),0) pos6
+  from sorteo_list_tbl
+) --select * from sorteo_actual_tbl order by curr_sorteo;
+, sorteo_previo_tbl as (
+select sorteo_list curr_sorteo
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif1= 0),0) P1
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif2= 0),0) P2
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif3= 0),0) P3
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif4= 0),0) P4
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif5= 0),0) P5
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif6= 0),0) P6
+     , nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif1= 0),0)
+     + nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif2= 0),0)
+     + nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif3= 0),0)
+     + nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif4= 0),0)
+     + nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif5= 0),0)
+     + nvl((select 1 from olap_sys.gl_position_counts_log curr2 where curr2.sorteo=sorteo_list and curr2.dif6= 0),0) SUM_P
+     --!pos1
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq1
+     , nvl((select prev.pos1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos1 
+     , nvl((select prev.dif1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif1
+     , nvl((select prev.g_prob1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob1
+     , nvl((select prev.lt1||'+'||prev.g_flag1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag1
+     , nvl((select prev.type_prob1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob1
+     , nvl((select prev.lt1||'+'||prev.type_flag1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag1
+     --!pos2
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq2
+     , nvl((select prev.pos2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos2
+     , nvl((select prev.pxc2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pxc2
+     , nvl((select prev.dif2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif2
+     , nvl((select prev.g_prob2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob2
+     , nvl((select prev.lt2||'+'||prev.g_flag2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag2
+     , nvl((select prev.type_prob2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob2
+     , nvl((select prev.lt2||'+'||prev.type_flag2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag2
+     --!pos3
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq3
+     , nvl((select prev.pos3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos3
+     , nvl((select prev.pxc3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pxc3
+     , nvl((select prev.dif3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif3
+     , nvl((select prev.g_prob3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob3
+     , nvl((select prev.lt3||'+'||prev.g_flag3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag3
+     , nvl((select prev.type_prob3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob3
+     , nvl((select prev.lt3||'+'||prev.type_flag3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag3
+     --!pos4
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq4
+     , nvl((select prev.pos4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos4
+     , nvl((select prev.pxc4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pxc4
+     , nvl((select prev.dif4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif4
+     , nvl((select prev.g_prob4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob4
+     , nvl((select prev.lt4||'+'||prev.g_flag4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag4
+     , nvl((select prev.type_prob4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob4
+     , nvl((select prev.lt4||'+'||prev.type_flag4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag4
+     --!pos5
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq5
+     , nvl((select prev.pos5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos5
+     , nvl((select prev.pxc5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pxc5
+     , nvl((select prev.dif5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif5
+     , nvl((select prev.g_prob5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob5
+     , nvl((select prev.lt5||'+'||prev.g_flag5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag5
+     , nvl((select prev.type_prob5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob5
+     , nvl((select prev.lt5||'+'||prev.type_flag5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag5
+     --!pos6
+     , nvl((select prev.seq from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) seq6
+     , nvl((select prev.pos6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pos6
+     , nvl((select prev.pxc6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) pxc6
+     , nvl((select prev.dif6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) dif6
+     , nvl((select prev.g_prob6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) g_prob6
+     , nvl((select prev.lt6||'+'||prev.g_flag6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') g_flag6
+     , nvl((select prev.type_prob6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),0) type_prob6
+     , nvl((select prev.lt6||'+'||prev.type_flag6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') type_flag6
+     --!avg_ca
+     , nvl((select prev.avg_ca_flag1 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos1 > 0 and prev.pos1=(select pos1 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag1
+     , nvl((select prev.avg_ca_flag2 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos2 > 0 and prev.pos2=(select pos2 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag2
+     , nvl((select prev.avg_ca_flag3 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos3 > 0 and prev.pos3=(select pos3 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag3
+     , nvl((select prev.avg_ca_flag4 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos4 > 0 and prev.pos4=(select pos4 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag4
+     , nvl((select prev.avg_ca_flag5 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos5 > 0 and prev.pos5=(select pos5 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag5
+     , nvl((select prev.avg_ca_flag6 from olap_sys.gl_position_counts_log prev where prev.sorteo = sorteo_list -1 and prev.pos6 > 0 and prev.pos6=(select pos6 from sorteo_actual_tbl where curr_sorteo=sorteo_list)),'#') avg_ca_flag6     
+  from sorteo_list_tbl
+)
+select curr_sorteo
+     , p1, p2, p3, p4, p5, p6, sum_p
+     , seq1, case when seq1 = 0 then 0 when seq1 between 1 and 3 then 1 when seq1 between 4 and 6 then 2 when seq1 > 6 then 3 end seq1_rank, pos1, dif1, g_prob1, g_flag1, type_prob1, type_flag1
+     , seq2, case when seq2 = 0 then 0 when seq2 between 1 and 6 then 1 when seq2 between 7 and 12 then 2 when seq2 > 12 then 3 end seq2_rank, pos2, dif2, g_prob2, g_flag2, type_prob2, type_flag2
+     , seq3, case when seq3 = 0 then 0 when seq3 between 1 and 6 then 1 when seq3 between 7 and 12 then 2 when seq3 > 12 then 3 end seq3_rank, pos3, dif3, g_prob3, g_flag3, type_prob3, type_flag3
+     , seq4, case when seq4 = 0 then 0 when seq4 between 1 and 6 then 1 when seq4 between 7 and 12 then 2 when seq4 > 12 then 3 end seq4_rank, pos4, dif4, g_prob4, g_flag4, type_prob4, type_flag4
+     , seq5, case when seq5 = 0 then 0 when seq5 between 1 and 6 then 1 when seq5 between 7 and 12 then 2 when seq5 > 12 then 3 end seq5_rank, pos5, dif5, g_prob5, g_flag5, type_prob5, type_flag5
+     , seq6, case when seq6 = 0 then 0 when seq6 between 1 and 3 then 1 when seq6 between 4 and 6 then 2 when seq6 > 6 then 3 end seq6_rank, pos6, dif6, g_prob6, g_flag6, type_prob6, type_flag6
+     , avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6
+  from sorteo_previo_tbl
+-- where (g_flag5='N' and g_flag2='N') or (g_flag5='N' and g_flag6='Y') 
+ order by curr_sorteo
+;
+
+##### Dado un dígito dado y su posición, imprimir que otro dígito se ha aparecido mas veces
+
+--!C:\temp\sarnNextDigit.xlsx
+--!Tab Name: NXT_DIGIT
+select * 
+  from olap_sys.next_digit_v
+; 
+
+
+--!recupera las predicciones para el sorteo a jugar != '15.GL'
+--!Tab Name: PREDICCIONES
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+, output_tbl as (
+select distinct prediccion_nombre, 0 muestra, prediccion_sorteo, prediccion_tipo, 
+       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
+       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0, match_cnt, 0 match_pct,
+       match1, match2, match3, match4, match5, match6, match7, match8, match9, match0,
+       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num
+  FROM olap_sys.predicciones_all
+ WHERE prediccion_tipo != '15.GL'
+   and prediccion_sorteo = (select max_id from siguiente_sorteo_tbl) - nvl(:pn_historico,0)
+/*union
+select prediccion_nombre, 0 muestra, prediccion_sorteo, replace(prediccion_tipo,'_2',null) prediccion_tipo, 
+       pred1, pred2, pred3, pred4, pred5, pred6,
+       res1, res2, res3, res4, res5, res6, match_cnt, 0 match_pct,
+       match1, match2, match3, match4, match5, match6,
+       to_number(substr(prediccion_tipo, 1,instr(prediccion_tipo,'.')-1)) prediccion_tipo_num
+  from olap_sys.predicciones_all
+ where prediccion_sorteo = (select max_id from siguiente_sorteo_tbl)-1 */
+ order by prediccion_sorteo desc, prediccion_tipo_num, prediccion_nombre
+)
+select prediccion_nombre, muestra, prediccion_sorteo, prediccion_tipo, 
+       pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred0,
+       res1, res2, res3, res4, res5, res6, res7, res8, res9, res0,
+       match_cnt, match_pct, match1, match2, match3, match4, match5, match6, match7, match8, match9, match0
+  from output_tbl
+;
+
+--!setear el rango a los digitos de las predicciones
+clear screen
+set serveroutput on
+declare
+    cursor c_reultados is
+    select max(drawing_id) max_id 
+      from olap_sys.s_calculo_stats;
+
+    cursor c_predicciones (pn_sorteo    number) is
+    with predicciones_tbl as (    
+    select *
+      from (
+    select prediccion_nombre, siguiente_sorteo1 sig_sorteo, to_number(pred1) pred1, to_number(pres1) pres1, to_number(res1) res1, to_number(match1) match1, b_type
+         , max(to_number(pres1)) over (partition by b_type, pred1) max_pres1
+    from olap_sys.predicciones_all
+     where instr(prediccion_tipo,'15.') > 0 
+       and prediccion_sorteo = pn_sorteo
+    ) where pres1 = max_pres1 
+    ) 
+    , percentile_predicciones_tbl as (
+    select distinct sig_sorteo
+         , b_type
+         , percentile_cont(0.4) within group (order by pres1) over (partition by sig_sorteo, b_type) as low_perc_pres1
+         , percentile_cont(0.9) within group (order by pres1) over (partition by sig_sorteo, b_type) as high_perc_pres1
+      from predicciones_tbl
+    ) 
+    select distinct pp.b_type, pp.low_perc_pres1, pp.high_perc_pres1
+      from percentile_predicciones_tbl pp;
+
+    cursor c_next_digit (pn_sorteo    number) is
+    with posicion_tbl as (
+    select hh.drawing_id, hh.b_type, hh.digit digit_hdr
+         , hd.id, hd.history_digit, hd.match_cnt, hd.drawing_cnt, hd.drawing_list, hd.next_drawing_id, hd.winner_flag
+      from olap_sys.position_digit_history_header hh
+         , olap_sys.position_digit_history_dtl hd
+     where hh.drawing_id = pn_sorteo
+       and hh.header_id = hd.header_id
+       and hh.b_type = hd.b_type
+    )
+    , resultados_tbl as (
+    select hd.id, hh.b_type, hh.drawing_id, hh.digit digit_hdr
+         , hd.next_drawing_id, hd.history_digit, hd.winner_flag
+      from olap_sys.position_digit_history_header hh
+         , olap_sys.position_digit_history_dtl hd
+     where hd.winner_flag is not null
+       and hh.header_id = hd.header_id
+       and hh.b_type = hd.b_type
+    )
+    , cnt_resultados_tbl as (
+    select b_type
+         , id
+         , count(1) cnt
+      from resultados_tbl
+     where drawing_id >=  pn_sorteo - 100
+     group by b_type
+         , id 
+    )
+    , rango_resultados_tbl as (
+    select b_type rango_b_type
+         , min(id) min_id
+         , round(avg(id)) avg_id
+      from cnt_resultados_tbl
+     group by b_type
+    )
+    , output_tbl as (
+    select p.drawing_id, p.b_type, p.digit_hdr, p.history_digit, p.match_cnt, p.drawing_cnt, p.next_drawing_id, p.id
+         , nvl(decode(c.color_ubicacion,-1,'#',1,'R',2,'G',3,'B'),'#') fr
+         , nvl(decode(c.color_ley_tercio,-1,'#',1,'R',2,'G',3,'B'),'#') lt
+         , nvl(c.ciclo_aparicion,-1) ca
+         , decode(c.pronos_ciclo,null,0,1) pxc
+         , nvl(c.preferencia_flag,'.') pre
+         , case when c.chng_posicion is null then '.' else 'C' end chng
+         , nvl(c.preferencia_num,-1) pre_num 
+         , case when id between (select min_id from rango_resultados_tbl where rango_b_type=p.b_type) and (select avg_id from rango_resultados_tbl where rango_b_type=p.b_type) then 'Y' else 'N' end jugar_flag
+         , p.drawing_list
+      from posicion_tbl p
+         , olap_sys.s_calculo_stats c
+     where c.drawing_id(+) = p.drawing_id
+       and c.b_type(+) = p.b_type
+       and c.digit(+) = p.history_digit
+    )
+    select *
+      from output_tbl
+     where 1=1
+       and lt != '#'
+       and chng = '.'
+       and jugar_flag = 'Y';      
+begin
+    for r in c_reultados loop
+        update olap_sys.predicciones_all
+           set pred2 = 'N'
+         where prediccion_sorteo = r.max_id
+           and instr(prediccion_tipo,'15.') > 0;
+
+        for p in c_predicciones (pn_sorteo => r.max_id) loop
+            dbms_output.put_line(r.max_id||'-'||p.b_type||'-'||p.low_perc_pres1||'-'||p.high_perc_pres1);
+            update olap_sys.predicciones_all
+               set pred2 = 'Z'
+             where prediccion_sorteo = r.max_id
+               and instr(prediccion_tipo,'15.') > 0
+               and pred2 = 'N'
+               and b_type = p.b_type
+               and pres1 between p.low_perc_pres1 and p.high_perc_pres1;
+        end loop;
+
+        for n in c_next_digit (pn_sorteo => r.max_id) loop
+            dbms_output.put_line('test :'||r.max_id||'-'||n.b_type||'-'||n.history_digit);
+            if n.b_type in ('B1','B2','B3','B4','B5','B6') then
+                dbms_output.put_line('test2');
+                update olap_sys.predicciones_all
+                   set pred2 = 'Y'
+                 where prediccion_sorteo = r.max_id
+                   and instr(prediccion_tipo,'15.') > 0
+                   and pred2 = 'Z'
+                   and b_type = n.b_type
+                   and pred1 = to_char(n.history_digit);       
+            end if;   
+        end loop;
+    end loop;
+    commit;
+end;
+/
+
+--!Tab Name: PREDICCIONES_DIGITO
+--!ordenamiento de predicciones por probabilidad
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+select distinct prediccion_sorteo, siguiente_sorteo1 sig_sorteo, b_type, pred1, olap_sys.w_common_pkg.get_digit_type(pred1) primo_par_impar, match1 match, pred2
+  from olap_sys.predicciones_all
+ where instr(prediccion_tipo,'15.') > 0
+   and prediccion_sorteo = (select max_id from siguiente_sorteo_tbl) - nvl(:pn_historico,0)
+   and pred2 in ('Z','Y')
+ order by b_type, to_number(pred1), pred2  
+;
+
+
+
+
+
 
 
 --!proceso que identifica los numeros mas repetidos para las posiciones p2 a p5
@@ -429,204 +582,504 @@ select *--LIST_ID, ID, IA1, IA2, IA3, IA4, IA5, IA6, PN1, PN2, PN3, PN4, PN5, PN
 ; 
 */
 
---<<<conteo de posiciones>>>
---Nota: el proceso que hace estos conteos debe estar basado en la vista gl_automaticas_detail_v. reevisar este proceso
-select seq
-      , sorteo
-      , d1
-      , pos1
-      , j_cnt1
-      , r_cnt1
-      , sorteo1_id
-      , dif1
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') fr1
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') lt1
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') pxc1
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') pref1
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') chng1
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B1' and pos1 = digit),'#') avg_ca_flag1
-      , d2
-      , pos2
-      , j_cnt2
-      , r_cnt2
-      , sorteo2_id
-      , dif2
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') fr2
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') lt2
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') pxc2
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') pref2
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') chng2
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B2' and pos2 = digit),'#') avg_ca_flag2
-      , d3
-      , pos3
-      , j_cnt3
-      , r_cnt3
-      , sorteo3_id
-      , dif3
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') fr3
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') lt3
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') pxc3
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') pref3
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') chng3
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B3' and pos3 = digit),'#') avg_ca_flag3
-      , d4
-      , pos4
-      , j_cnt4
-      , r_cnt4
-      , sorteo4_id
-      , dif4
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') fr4
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') lt4
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') pxc4
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') pref4
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') chng4
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B4' and pos4 = digit),'#') avg_ca_flag4
-      , d5
-      , pos5
-      , j_cnt5
-      , r_cnt5
-      , sorteo5_id
-      , dif5
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') fr5
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') lt5
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') pxc5
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') pref5
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') chng5
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B5' and pos5 = digit),'#') avg_ca_flag5
-      , d6
-      , pos6
-      , j_cnt6
-      , r_cnt6
-      , sorteo6_id
-      , dif6
-      , nvl((select decode(color_ubicacion,1,'R',2,'G',3,'B') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') fr6
-      , nvl((select decode(color_ley_tercio,1,'R',2,'G',3,'B')  from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') lt6
-      , nvl((select decode(pronos_ciclo,null,'.',to_char(pronos_ciclo)) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') pxc6
-      , nvl((select decode(preferencia_flag,null,'.',preferencia_flag) from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') pref6
-      , nvl((select decode(chng_posicion,null,'.','C') from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') chng6
-      , nvl((select case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 'A' end from olap_sys.s_calculo_stats where sorteo = drawing_id and b_type = 'B6' and pos6 = digit),'#') avg_ca_flag6
-  from olap_sys.gl_position_counts
- order by seq 
-;
-
---actualizar el numero del sorteo en los siguientes queries antes de ejecutarlos
-select pos1 from olap_sys.gl_position_counts where r_cnt1_flag = 1 and dif1_flag = 1 or (pos1 is not null and r_cnt1 > 0 and dif1 = 0) union select history_digit history_digit_pos1 from olap_sys.history_digit_info where b_type = 'B1' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;  
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B1' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-select pos2 from olap_sys.gl_position_counts where r_cnt2_flag = 1 and dif2_flag = 1 or (pos2 is not null and r_cnt2 > 0 and dif2 = 0) union select history_digit history_digit_pos2 from olap_sys.history_digit_info where b_type = 'B2' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;  
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B2' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-select pos3 from olap_sys.gl_position_counts where r_cnt3_flag = 1 and dif3_flag = 1 or (pos3 is not null and r_cnt3 > 0 and dif3 = 0) union select history_digit history_digit_pos3 from olap_sys.history_digit_info where b_type = 'B3' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;  
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B3' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-select pos4 from olap_sys.gl_position_counts where r_cnt4_flag = 1 and dif4_flag = 1 or (pos4 is not null and r_cnt4 > 0 and dif4 = 0) union select history_digit history_digit_pos4 from olap_sys.history_digit_info where b_type = 'B4' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;  
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B4' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-select pos5 from olap_sys.gl_position_counts where r_cnt5_flag = 1 and dif5_flag = 1 or (pos5 is not null and r_cnt5 > 0 and dif5 = 0) union select history_digit history_digit_pos5 from olap_sys.history_digit_info where b_type = 'B5' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;    
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B5' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-select pos6 from olap_sys.gl_position_counts where r_cnt6_flag = 1 and dif6_flag = 1 or (pos6 is not null and r_cnt6 > 0 and dif6 = 0) union select history_digit history_digit_pos6 from olap_sys.history_digit_info where b_type = 'B6' and chng = '.' and lt != '#' and drawing_id >=  1517 order by 1;   
-select distinct to_number(pred1) prediccion from olap_sys.predicciones_all where b_type = 'B6' and prediccion_sorteo = 1517 and to_number(pred3) < 9 order by 1;
-
---predicciones
-with resultado_tbl as (
-select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
-)
-, output_tbl as (
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B1' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B1' and id = (select max_id from resultado_tbl)
-union
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B2' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B2' and id = (select max_id from resultado_tbl)
-union
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B3' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B3' and id = (select max_id from resultado_tbl)
-union
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B4' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B4' and id = (select max_id from resultado_tbl)
-union
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B5' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B5' and id = (select max_id from resultado_tbl)
-union
-select distinct b_type, to_number(pred1) p_b, to_number(pred3) rank_pred from olap_sys.predicciones_all where prediccion_tipo = '15.GL' and b_type = 'B6' and prediccion_sorteo = (select max_id from resultado_tbl) union select b_type, digit, 99 from olap_sys.gl_jugada_actual_v where repetido = 1 and b_type = 'B6' and id = (select max_id from resultado_tbl)
-)
-select *
-  from output_tbl
- order by b_type, rank_pred, p_b  
-;
-
-##### Dado un dígito dado y su posición, imprimir que otro dígito se ha aparecido mas veces
-
---!C:\temp\sarnNextDigit.xlsx
-with resultado_tbl as (
-select max(gambling_id) max_id from olap_sys.sl_gamblings
-)
-, posicion_tbl as (
-select hh.drawing_id, hh.b_type, hh.digit digit_hdr
-     , hd.id, hd.history_digit, hd.match_cnt, hd.drawing_cnt, hd.drawing_list, hd.next_drawing_id, hd.winner_flag
-  from olap_sys.position_digit_history_header hh
-     , olap_sys.position_digit_history_dtl hd
- where hh.drawing_id = (select max_id from resultado_tbl) 
-   and hh.header_id = hd.header_id
-   and hh.b_type = hd.b_type
-)
-, resultados_tbl as (
-select hd.id, hh.b_type, hh.drawing_id, hh.digit digit_hdr
-     , hd.next_drawing_id, hd.history_digit, hd.winner_flag
-  from olap_sys.position_digit_history_header hh
-     , olap_sys.position_digit_history_dtl hd
- where hd.winner_flag is not null
-   and hh.header_id = hd.header_id
-   and hh.b_type = hd.b_type
-)
-, cnt_resultados_tbl as (
-select b_type
-     , id
-     , count(1) cnt
-  from resultados_tbl
- where drawing_id >=  (select max(drawing_id) from resultados_tbl) -100
- group by b_type
-     , id 
-)
-, rango_resultados_tbl as (
-select b_type rango_b_type
-     , min(id) min_id
-     , round(avg(id)) avg_id
-  from cnt_resultados_tbl
- group by b_type
-)
-, output_tbl as (
-select p.drawing_id, p.b_type, p.digit_hdr, p.history_digit, p.match_cnt, p.drawing_cnt, p.next_drawing_id, p.id
-     , nvl(decode(c.color_ubicacion,-1,'#',1,'R',2,'G',3,'B'),'#') fr
-     , nvl(decode(c.color_ley_tercio,-1,'#',1,'R',2,'G',3,'B'),'#') lt
-     , nvl(c.ciclo_aparicion,-1) ca
-     , decode(c.pronos_ciclo,null,0,1) pxc
-     , nvl(c.preferencia_flag,'.') pre
-     , case when c.chng_posicion is null then '.' else 'C' end chng
-     , nvl(c.preferencia_num,-1) pre_num 
-     , case when id between (select min_id from rango_resultados_tbl where rango_b_type=p.b_type) and (select avg_id from rango_resultados_tbl where rango_b_type=p.b_type) then 'Y' else 'N' end jugar_flag
-     , p.drawing_list
-  from posicion_tbl p
-     , olap_sys.s_calculo_stats c
- where c.drawing_id(+) = p.drawing_id
-   and c.b_type(+) = p.b_type
-   and c.digit(+) = p.history_digit
-)
-select *
-  from output_tbl
- where 1=1
-   and lt != '#'
-   and chng = '.'
-   and jugar_flag = 'Y'
---   and B_TYPE = 'B6'
- order by drawing_id, b_type, match_cnt desc, history_digit 
-; 
-
---!C:\temp\sarnNextDigit.xlsx
---!query equivalente
-with resultado_tbl as (
-select max(gambling_id) max_id from olap_sys.sl_gamblings
-)
-select drawing_id, b_type, digit_hdr, history_digit, match_cnt, drawing_cnt, next_drawing_id, id, fr, lt, ca, pxc, preferencia, chng, pxc_pref
-  from olap_sys.history_digit_info
- where drawing_id >=  (select max_id from resultado_tbl) 
-   and chng = '.'
-   and lt != '#'
- order by drawing_id, b_type, match_cnt desc, history_digit  
-;
 
      
 --<<<QUERIES PARA SELECCIONAR JUGADAS>>>
+
+set pagesize 50
+clear screen
+
+--!IMPAR
+prompt IMPAR
+with resultados_tbl as (
+select gambling_id
+     , none_cnt
+     , nvl(lead(none_cnt) over (order by gambling_id),-1) next_none_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select none_cnt
+     , next_none_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where none_cnt = (select none_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by none_cnt
+     , next_none_cnt
+ order by r_cnt desc, next_none_cnt desc
+; 
+
+
+
+--PAR
+prompt PAR
+with resultados_tbl as (
+select gambling_id
+     , par_cnt
+     , nvl(lead(par_cnt) over (order by gambling_id),-1) next_par_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select par_cnt
+     , next_par_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where par_cnt = (select par_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by par_cnt
+     , next_par_cnt
+ order by r_cnt desc, next_par_cnt desc
+; 
+
+--M3
+prompt M3
+with resultados_tbl as (
+select gambling_id
+     , m3_cnt
+     , nvl(lead(m3_cnt) over (order by gambling_id),-1) next_m3_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select m3_cnt
+     , next_m3_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where m3_cnt = (select m3_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by m3_cnt
+     , next_m3_cnt
+ order by r_cnt desc, next_m3_cnt desc
+; 
+
+--M4
+prompt M4
+with resultados_tbl as (
+select gambling_id
+     , m4_cnt
+     , nvl(lead(m4_cnt) over (order by gambling_id),-1) next_m4_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select m4_cnt
+     , next_m4_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where m4_cnt = (select m4_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by m4_cnt
+     , next_m4_cnt
+ order by r_cnt desc, next_m4_cnt desc
+; 
+
+--M5
+prompt M5
+with resultados_tbl as (
+select gambling_id
+     , m5_cnt
+     , nvl(lead(m5_cnt) over (order by gambling_id),-1) next_m5_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select m5_cnt
+     , next_m5_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where m5_cnt = (select m5_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by m5_cnt
+     , next_m5_cnt
+ order by r_cnt desc, next_m5_cnt desc
+; 
+
+--M7
+prompt M7
+with resultados_tbl as (
+select gambling_id
+     , m7_cnt
+     , nvl(lead(m7_cnt) over (order by gambling_id),-1) next_m7_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select m7_cnt
+     , next_m7_cnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where m7_cnt = (select m7_cnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by m7_cnt
+     , next_m7_cnt
+ order by r_cnt desc, next_m7_cnt desc
+; 
+
+--FAVORABLES
+prompt FAVORABLES
+with resultados_tbl as (
+select gambling_id
+     , precnt
+     , nvl(lead(precnt) over (order by gambling_id),-1) next_precnt
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+)
+select precnt
+     , next_precnt
+     , count(1) r_cnt
+  from resultados_tbl
+ where precnt = (select precnt from olap_sys.pm_mr_resultados_v2 where gambling_id = (select max(gambling_id) from olap_sys.sl_gamblings))
+ group by precnt
+     , next_precnt
+ order by r_cnt desc, next_precnt desc
+; 
+
+
+--!PATRON N+R
+with resultados_tbl as (
+select gambling_id id
+     , comb3
+     , comb4
+     , comb5
+     , comb6
+     , top_cnt
+     , top_history
+  from olap_sys.pm_mr_resultados_v2
+ where 1=1
+   and gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- 100
+ order by gambling_id
+) --select top_cnt, count(1) r_cnt from resultados_tbl group by top_cnt order by r_cnt desc;
+, c3_tbl as (
+select 'B3' b_type
+     , top_cnt
+     , comb3 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ where comb3 in (11,13,24,27,28,29,38)
+   and top_cnt in (1,2,3)
+ group by top_cnt
+     , comb3
+)
+, c4_tbl as (
+select 'B4' b_type
+     , top_cnt
+     , comb4 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ where comb4 in (11,13,24,27,28,29,38)
+   and top_cnt in (1,2,3)
+ group by top_cnt
+     , comb4
+)
+, c5_tbl as (
+select 'B5' b_type
+     , top_cnt
+     , comb5 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ where comb5 in (11,13,24,27,28,29,38)
+   and top_cnt in (1,2,3)
+ group by top_cnt
+     , comb5
+)
+, c6_tbl as (
+select 'B6' b_type
+     , top_cnt
+     , comb6 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ where comb6 in (11,13,24,27,28,29,38)
+   and top_cnt in (1,2,3)
+ group by top_cnt
+     , comb6
+)
+, union_tbl as ( 
+select b_type, top_cnt, comb, r_cnt from c3_tbl
+union
+select b_type, top_cnt, comb, r_cnt from c4_tbl
+union
+select b_type, top_cnt, comb, r_cnt from c5_tbl
+union
+select b_type, top_cnt, comb, r_cnt from c6_tbl
+)
+select (select min(id) from resultados_tbl) min_id
+     , (select max(id) from resultados_tbl) max_id
+     , (select max(id) from resultados_tbl) - (select min(id) from resultados_tbl) + 1 rango
+     , b_type
+     , top_cnt
+     , comb
+     , r_cnt
+  from union_tbl     
+ order by b_type, top_cnt, r_cnt desc, comb
+;  
+
+--!C3
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+, resultados_tbl as (
+select gambling_id id
+     , comb1
+     , comb2
+     , comb3
+     , comb4
+     , comb5
+     , comb6
+     , additional
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- nvl(:pn_rango_historico,100)
+   and top_cnt in (1,2,3)
+   and comb3 in (11,13,24,27,28,29,38)
+) --select * from resultados_tbl;
+, resultados_union_tbl as (
+select comb3, comb2 comb from resultados_tbl
+union all
+select comb3, comb4 from resultados_tbl
+union all
+select comb3, comb5 from resultados_tbl
+) --select * from resultados_union_tbl order by comb;
+, resultados_group_tbl as (
+select '1' pos
+     , comb3
+     , comb1 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb1, comb3 
+union all
+select '3' pos
+     , comb3 
+     , 0 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb3 
+union all
+select '2-5' pos
+     , comb3
+     , comb
+     , count(1) r_cnt
+  from resultados_union_tbl
+ group by comb, comb3
+union all
+select '6' pos
+     , comb3
+     , comb6
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb6, comb3 
+) --select * from resultados_group_tbl where comb3 = 13 and comb>0 order by pos, r_cnt desc;
+select 
+       (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_from
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_to
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100))
+     - (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) + 1 rango
+     , comb3 pos_3
+     , pos pos_n
+     , comb
+     , r_cnt
+  from resultados_group_tbl   
+ where (((pos = '2-5' and r_cnt > 1) or (pos = '1')) or pos = '6')
+   and comb > 0
+ order by comb3, pos, r_cnt desc, comb desc;  
+ 
+ 
+ --!C4
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+, resultados_tbl as (
+select gambling_id id
+     , comb1
+     , comb2
+     , comb3
+     , comb4
+     , comb5
+     , comb6
+     , additional
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- nvl(:pn_rango_historico,100)
+   and top_cnt in (1,2,3)
+   and comb4 in (11,13,24,27,28,29,38)
+) --select * from resultados_tbl;
+, resultados_union_tbl as (
+select comb4, comb2 comb from resultados_tbl
+union all
+select comb4, comb3 from resultados_tbl
+union all
+select comb4, comb5 from resultados_tbl
+) --select * from resultados_union_tbl order by comb;
+, resultados_group_tbl as (
+select '1' pos
+     , comb4
+     , comb1 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb1, comb4 
+union all
+select '4' pos
+     , comb4 
+     , 0 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb4 
+union all
+select '2-5' pos
+     , comb4
+     , comb
+     , count(1) r_cnt
+  from resultados_union_tbl
+ group by comb, comb4
+union all
+select '6' pos
+     , comb4
+     , comb6
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb6, comb4 
+) --select * from resultados_group_tbl where comb4 = 11 and comb>0 order by pos, r_cnt desc;
+select 
+       (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_from
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_to
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100))
+     - (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) + 1 rango
+     , comb4 pos_4
+     , pos pos_n
+     , comb
+     , r_cnt
+  from resultados_group_tbl   
+ where(((pos = '2-5' and r_cnt > 1) or (pos = '1')) or pos = '6')
+   and comb > 0
+ order by comb4, pos, r_cnt desc, comb desc;  
+ ;
+ 
+
+
+ --!C5
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+, resultados_tbl as (
+select gambling_id id
+     , comb1
+     , comb2
+     , comb3
+     , comb4
+     , comb5
+     , comb6
+     , additional
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings)- nvl(:pn_rango_historico,100)
+   and top_cnt in (1,2,3)
+   and comb5 in (11,13,24,27,28,29,38)
+) --select * from resultados_tbl;
+, resultados_union_tbl as (
+select comb5, comb2 comb from resultados_tbl
+union all
+select comb5, comb3 from resultados_tbl
+union all
+select comb5, comb4 from resultados_tbl
+) --select * from resultados_union_tbl order by comb;
+, resultados_group_tbl as (
+select '1' pos
+     , comb5
+     , comb1 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb1, comb5 
+union all
+select '4' pos
+     , comb5 
+     , 0 comb
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb5 
+union all
+select '2-5' pos
+     , comb5
+     , comb
+     , count(1) r_cnt
+  from resultados_union_tbl
+ group by comb, comb5
+union all
+select '6' pos
+     , comb5
+     , comb6
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb6, comb5 
+) --select * from resultados_group_tbl where comb4 = 11 and comb>0 order by pos, r_cnt desc;
+select 
+       (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_from
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) sorteo_to
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100))
+     - (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - nvl(trim(:pn_rango_historico),100)) + 1 rango
+     , comb5 pos_5
+     , pos pos_n
+     , comb
+     , r_cnt
+  from resultados_group_tbl   
+ where(((pos = '2-5' and r_cnt > 1) or (pos = '1')) or pos = '6')
+   and comb > 0
+ order by comb5, pos, r_cnt desc, comb desc
+; 
+
+
+--!en base a un digito especificado, regresa el conteo de la lista de digistos de la posicion de 2-5
+--!y un conteo por separado de la lista de numeros de la posicion 6
+with siguiente_sorteo_tbl as (
+select max(drawing_id) max_id from olap_sys.s_calculo_stats where winner_flag is null
+)
+, resultados_tbl as (
+select gambling_id id
+     , comb1
+     , comb2
+     , comb3
+     , comb4
+     , comb5
+     , comb6
+     , additional
+  from olap_sys.pm_mr_resultados_v2
+ where gambling_id > (select max_id from siguiente_sorteo_tbl) - nvl(:pn_rango_historico,0)
+   and comb1 = :pn_digito
+)
+, resultados_union_tbl as (
+select comb2 comb from resultados_tbl
+union all
+select comb3 from resultados_tbl
+union all
+select comb4 from resultados_tbl
+union all
+select comb5 from resultados_tbl
+)
+, resultados_group_tbl as (
+select '2-5' pos
+     , comb
+     , count(1) r_cnt
+  from resultados_union_tbl
+ group by comb
+union all
+select '6' pos
+     , comb6
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb6 
+union all
+select '1' pos
+     , comb1
+     , count(1) r_cnt
+  from resultados_tbl
+ group by comb1  
+ union all
+select 'adi' pos
+     , additional
+     , count(1) r_cnt
+  from resultados_tbl
+ group by additional  
+)
+select 
+       (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - :pn_rango_historico) sorteo_from
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - :pn_rango_historico) sorteo_to
+     , (select max(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - :pn_rango_historico)
+     - (select min(gambling_id) from olap_sys.pm_mr_resultados_v2 where gambling_id > (select max(gambling_id) from olap_sys.sl_gamblings) - :pn_rango_historico) + 1 rango
+     , :pn_digito pos_1
+     , pos pos_n
+     , comb
+     , r_cnt
+  from resultados_group_tbl   
+ where (pos = '2-5' and r_cnt > 1) 	 
+    or pos = '6'
+--   and comb in (21,22,23,25,27,29)
+ order by pos, r_cnt desc, comb desc;  
+
 
 
 --<<OPCION A>>
@@ -635,233 +1088,60 @@ select drawing_id, b_type, digit_hdr, history_digit, match_cnt, drawing_cnt, nex
 with resultado_tbl as (
 select max(gambling_id) max_id from olap_sys.sl_gamblings
 )  
---![[patron de conteo basado en decenas, digitos y sorteos]]
-, pc_tbl as (
-select * 
-  from olap_sys.gl_position_counts
- where sorteo = (select max_id from resultado_tbl)  
-) --select * from pc_tbl;
---B1
-, pos1_all_tbl as (
-select d1
-     , pos1
-     , j_cnt1
-     , r_cnt1
-     , dif1
- from  pc_tbl   
- where d1 is not null    
-)
-, pos1_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif1) perc_dif1_ini
-     , percentile_disc(0.75) within group (order by dif1) perc_dif1_end
-     , round(avg(r_cnt1)) avg_r_cnt1 
- from pos1_all_tbl
-)
-, b1_tbl as (
-select 'B1' b_type
-     , pos1 pos
-  from pos1_all_tbl
- where dif1 >= (select perc_dif1_ini from pos1_stats_tbl) 
-   and dif1 <= (select perc_dif1_end from pos1_stats_tbl) 
-   --and r_cnt1 >= (select avg_r_cnt1 from pos1_stats_tbl)
-union
-select 'B1' b_type
-     , pos1
-  from pos1_all_tbl
- where dif1 in (0,1)
-) --select * from b1_tbl;
---B2
-, pos2_all_tbl as (
-select d2
-     , pos2
-     , j_cnt2
-     , r_cnt2
-     , dif2
- from  pc_tbl   
- where d2 is not null    
-)
-, pos2_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif2) perc_dif2_ini
-     , percentile_disc(0.75) within group (order by dif2) perc_dif2_end
-     , round(avg(r_cnt2)) avg_r_cnt2 
- from pos2_all_tbl
-)
-, b2_tbl as (
-select 'B2' b_type
-     , pos2 pos
-  from pos2_all_tbl
- where dif2 >= (select perc_dif2_ini from pos2_stats_tbl) 
-   and dif2 <= (select perc_dif2_end from pos2_stats_tbl) 
-   and r_cnt2 >= (select avg_r_cnt2 from pos2_stats_tbl)
-union
-select 'B2' b_type
-     , pos2
-  from pos2_all_tbl
- where dif2 in (0,1)
-) --select * from b2_tbl;
---B3
-, pos3_all_tbl as (
-select d3
-     , pos3
-     , j_cnt3
-     , r_cnt3
-     , dif3
- from  pc_tbl   
- where d3 is not null    
-)
-, pos3_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif3) perc_dif3_ini
-     , percentile_disc(0.75) within group (order by dif3) perc_dif3_end
-     , round(avg(r_cnt3)) avg_r_cnt3 
- from pos3_all_tbl
-)
-, b3_tbl as (
-select 'B3' b_type
-     , pos3 pos
-  from pos3_all_tbl
- where dif3 >= (select perc_dif3_ini from pos3_stats_tbl) 
-   and dif3 <= (select perc_dif3_end from pos3_stats_tbl) 
-   and r_cnt3 >= (select avg_r_cnt3 from pos3_stats_tbl)
-union
-select 'B3' b_type
-     , pos3
-  from pos3_all_tbl
- where dif3 in (0,1)
-) --select * from b3_tbl;
---B4
-, pos4_all_tbl as (
-select d4
-     , pos4
-     , j_cnt4
-     , r_cnt4
-     , dif4
- from  pc_tbl   
- where d4 is not null    
-)
-, pos4_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif4) perc_dif4_ini
-     , percentile_disc(0.75) within group (order by dif4) perc_dif4_end
-     , round(avg(r_cnt4)) avg_r_cnt4 
- from pos4_all_tbl
-)
-, b4_tbl as (
-select 'B4' b_type
-     , pos4 pos
-  from pos4_all_tbl
- where dif4 >= (select perc_dif4_ini from pos4_stats_tbl) 
-   and dif4 <= (select perc_dif4_end from pos4_stats_tbl) 
-   and r_cnt4 >= (select avg_r_cnt4 from pos4_stats_tbl)
-union
-select 'B4' b_type
-     , pos4
-  from pos4_all_tbl
- where dif4 in (0,1)
-) --select * from b4_tbl;
---B5
-, pos5_all_tbl as (
-select d5
-     , pos5
-     , j_cnt5
-     , r_cnt5
-     , dif5
- from  pc_tbl   
- where d5 is not null    
-)
-, pos5_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif5) perc_dif5_ini
-     , percentile_disc(0.75) within group (order by dif5) perc_dif5_end
-     , round(avg(r_cnt5)) avg_r_cnt5 
- from pos5_all_tbl
-)
-, b5_tbl as (
-select 'B5' b_type
-     , pos5 pos
-  from pos5_all_tbl
- where dif5 >= (select perc_dif5_ini from pos5_stats_tbl) 
-   and dif5 <= (select perc_dif5_end from pos5_stats_tbl) 
-   and r_cnt5 >= (select avg_r_cnt5 from pos5_stats_tbl)
-union
-select 'B5' b_type
-     , pos5
-  from pos5_all_tbl
- where dif5 in (0,1)
-) --select * from b5_tbl;
---B6
-, pos6_all_tbl as (
-select d6
-     , pos6
-     , j_cnt6
-     , r_cnt6
-     , dif6
- from  pc_tbl   
- where d6 is not null    
-)
-, pos6_stats_tbl as (
-select percentile_disc(0.25) within group (order by dif6) perc_dif6_ini
-     , percentile_disc(0.75) within group (order by dif6) perc_dif6_end
-     , round(avg(r_cnt6)) avg_r_cnt6 
- from pos6_all_tbl
-)
-, b6_tbl as (
-select 'B6' b_type
-     , pos6 pos
-  from pos6_all_tbl
- where dif6 >= (select perc_dif6_ini from pos6_stats_tbl) 
-   and dif6 <= (select perc_dif6_end from pos6_stats_tbl) 
-union
-select 'B6' b_type
-     , pos6
-  from pos6_all_tbl
- where dif6 in (0,1)
-) --select * from b6_tbl;
 --![[informacion de gigaloterias]]
 , gl_tbl as (
-select drawing_id id, b_type, digit, color_ubicacion cfr, ubicacion vfr, color_ley_tercio clt, ciclo_aparicion ca, pronos_ciclo pxc
-     , preferencia_flag pre, case when CHNG_POSICION is null then '.' else 'X' end chg, rango_ley_tercio rlt, preferencia_num pre_num
-     --, avg_ciclo_aparicion avg_ca
-     --!se le agregan 2 unidades al avg para extender el rango de seleccion de jugadas
-     , case when b_type in ('B1','B2','B5','B6') then avg_ciclo_aparicion + 2 else avg_ciclo_aparicion end avg_ca
+select drawing_id id, b_type, digit, color_ubicacion cfr, ubicacion vfr, color_ley_tercio clt, ciclo_aparicion ca, case when pronos_ciclo is null then 'N' else 'Y' end pxc
+     , case when preferencia_flag is null then 'N' else 'Y' end pre, case when CHNG_POSICION is null then '.' else 'X' end chg, rango_ley_tercio rlt, preferencia_num pre_num
   from olap_sys.s_calculo_stats
- where drawing_id = (select max_id from resultado_tbl) 
-)
+ where preferencia_flag is not null 
+   and drawing_id = (select max_id from resultado_tbl) 
+) --select * from gl_tbl;
 , e1_b1_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B1'
-) --select * from e1_b1_tbl;
+--   and rlt between 1 and 6
+) --select * from e1_b1_tbl;;
 , e1_b2_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B2'
-)
+--   and rlt between 1 and 9
+) --select * from e1_b2_tbl;
 , e1_b3_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B3'
-)
+--   and rlt between 1 and 10
+) --select * from e1_b3_tbl;
 , e1_b4_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B4'
-)
+--   and rlt between 1 and 10 
+) --select * from e1_b4_tbl;
 , e1_b5_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B5'
-)
+--   and rlt between 1 and 9 
+) --select * from e1_b5_tbl;
 , e1_b6_tbl as (
-select id, b_type, digit, cfr, vfr, clt, ca, decode(pxc,null,0,1) pxc, decode(pre,null,0,2) pre, rlt, pre_num, avg_ca
+select id, b_type, digit, cfr, vfr, clt, ca, pxc, pre, rlt, pre_num
   from gl_tbl
  where b_type = 'B6'
-) --SELECT * FROM e1_b6_tbl;
+--   and rlt between 1 and 6
+) --select * from e1_b6_tbl;
 --![[informacion de patrones de LT]]
 , lt_details_tbl as (
 select lt1, lt2, lt3, lt4, lt5, lt6
   from olap_sys.s_gl_ley_tercio_patterns 
- where last_drawing_id = (select max_id from resultado_tbl)
-   and null_cnt  = 0 
-   and match_cnt = 0
-)
+ where last_drawing_id = 1583--(select max_id from resultado_tbl)
+   and null_cnt in(0,1) 
+   and match_cnt = 0 
+   --and null_cnt in (0,1) and match_cnt in (0,1)
+   and red_cnt < 3
+) --select *  from lt_details_tbl; 
 --![[resumen agrupado del LT]]
 , lt_summary_tbl as (
 select distinct drawing_id_end id_end
@@ -873,154 +1153,249 @@ select distinct drawing_id_end id_end
    and drawing_id_end = (select max_id from resultado_tbl)
    and predicted_flag_end is not null
 ) --select * from lt_summary_tbl order by b_type_end;
---![[patron de resultados por posicion]]
-, patron_posicion_tbl as (
-select hh.drawing_id, hh.b_type, hh.digit digit_hdr
-     , hd.id, hd.history_digit, hd.match_cnt, hd.drawing_cnt, hd.drawing_list, hd.next_drawing_id, hd.winner_flag
-  from olap_sys.position_digit_history_header hh
-     , olap_sys.position_digit_history_dtl hd
- where hh.drawing_id = (select max_id from resultado_tbl) 
-   and hh.header_id = hd.header_id
-   and hh.b_type = hd.b_type
+, aciertos_tbl as (
+select aciertos_accum
+     , count(1) r_cnt
+  from olap_sys.gl_automaticas_detail
+ where sorteo_actual =  (select max_id from resultado_tbl)
+ group by aciertos_accum
+) --select * from aciertos_tbl order by r_cnt desc; 
+, avg_aciertos_tbl as (
+select round(avg(r_cnt),2) avg_r_cnt
+     , percentile_cont(0.45) within group (order by r_cnt) as low_perc_r_cnt
+  from aciertos_tbl
+) --select * from avg_aciertos_tbl;
+, distinct_aciertos_tbl as (
+select a.aciertos_accum
+  from aciertos_tbl a
+ where 1=1
+   --!si el query recupera muchos registros con la condicion basada en el percentile entonces hacer el cambio  la condicion basada en el promedio
+--#   and a.r_cnt >= (select low_perc_r_cnt from avg_aciertos_tbl)  
+   and a.r_cnt >= (select avg_r_cnt from avg_aciertos_tbl) 
+ order by a.aciertos_accum
+) --select aciertos_accum from distinct_aciertos_tbl;
+--!bayes?_general_flag = 'N'
+--!bayes?_b_type_flag = 'Y'
+, b1_merge_tbl as (
+select 'B1' b_type, pos1 pos, g_flag1 g_flag, type_flag1 t_flag from olap_sys.gl_position_counts_v where pos1 > 0 /*and pref1 = 'X'*/ and sorteo = (select max_id from resultado_tbl) and seq between 2 and 7 and g_prob1 between 0.003 and 0.2155 
+--union
+--select b_type, digit, '', '' from e1_b1_tbl
+) --select * from b1_merge_tbl;
+, b2_merge_tbl as (
+select 'B2' b_type, pos2 pos, g_flag2 g_flag, type_flag2 t_flag from olap_sys.gl_position_counts_v where pos2 > 0 and sorteo = (select max_id from resultado_tbl) and g_prob2 between 0.0035 and 0.085 --and g_flag2 = 'N'
+--union
+--select b_type, digit, '', '' from e1_b2_tbl
+) --select * from b2_merge_tbl;
+, b3_merge_tbl as (
+select 'B3' b_type, pos3 pos, g_flag3 g_flag, type_flag3 t_flag from olap_sys.gl_position_counts_v where pos3 > 0 /*and bayes3_b_type_prob > 0 and bayes3_b_type_flag = 'Y'*/ and sorteo = (select max_id from resultado_tbl) and g_prob3 between 0 and 0.157 and seq between 5 and 16
+--union
+--select b_type, digit, '', '' from e1_b3_tbl
+) --select * from b3_merge_tbl;
+, b4_merge_tbl as (
+select 'B4' b_type, pos4 pos, g_flag4 g_flag, type_flag4 t_flag from olap_sys.gl_position_counts_v where pos4 > 0 /*and bayes4_b_type_prob > 0 and bayes4_b_type_flag = 'Y'*/ and sorteo = (select max_id from resultado_tbl) and g_prob4 between 0 and 0.1415 and seq between 1 and 13
+--union
+--select b_type, digit, '', '' from e1_b4_tbl
+) --select * from b4_merge_tbl;
+, b5_merge_tbl as (
+select 'B5' b_type, pos5 pos, g_flag5 g_flag, type_flag5 t_flag from olap_sys.gl_position_counts_v where pos5 > 0 and pref5 = 'X' and sorteo = (select max_id from resultado_tbl) --and g_prob5 between 0 and 0.079 --and seq between 1 and 13 
+--union
+--select b_type, digit, '', '' from e1_b5_tbl
+) --select * from b5_merge_tbl;
+, b6_merge_tbl as (
+select 'B6' b_type, pos6 pos, g_flag6 g_flag, type_flag6 t_flag from olap_sys.gl_position_counts_v where pos6 > 0 and sorteo = (select max_id from resultado_tbl) and g_prob6 between 0 and 0.208 and seq between 1 and 9  
+--union
+--select b_type, digit from e1_b6_tbl
+) --select * from b6_merge_tbl;
+, lt_contadores_tbl as (
+select red_cnt, green_cnt, blue_cnt
+     , count(1) r_cnt
+  from olap_sys.pm_mr_resultados_v2
+ where 1=1
+   and gambling_id > 594
+--   and gambling_id > (select max_id from resultado_tbl) - 100
+   and null_cnt = 0
+ group by red_cnt, green_cnt, blue_cnt
 )
-, patron_resultados_tbl as (
-select hd.id, hh.b_type, hh.drawing_id, hh.digit digit_hdr
-     , hd.next_drawing_id, hd.history_digit, hd.winner_flag
-  from olap_sys.position_digit_history_header hh
-     , olap_sys.position_digit_history_dtl hd
- where hd.winner_flag is not null
-   and hh.header_id = hd.header_id
-   and hh.b_type = hd.b_type
+, lt_contadores_avg_tbl as ( 
+select round(avg(r_cnt),2) avg_cnt
+  from lt_contadores_tbl
 )
-, patron_resultados_cnt_tbl as (
-select b_type
-     , id
-     , count(1) cnt
-  from patron_resultados_tbl
- where drawing_id >=  (select max_id from resultado_tbl) -100
- group by b_type
-     , id 
-)
-, rango_resultados_tbl as (
-select b_type rango_b_type
-     , min(id) min_id
-     , round(avg(id)) avg_id
-  from patron_resultados_cnt_tbl
- group by b_type
-)
-, patron_output_tbl as (
-select p.drawing_id, p.b_type, p.digit_hdr, p.history_digit digit, p.match_cnt
-     , nvl(decode(c.color_ley_tercio,-1,'#',1,'R',2,'G',3,'B'),'#') lt
-     , case when c.chng_posicion is null then '.' else 'C' end chng
-     , case when id between (select min_id from rango_resultados_tbl where rango_b_type=p.b_type) and (select avg_id from rango_resultados_tbl where rango_b_type=p.b_type) then 'Y' else 'N' end jugar_flag
-  from patron_posicion_tbl p
-     , olap_sys.s_calculo_stats c
- where c.drawing_id(+) = p.drawing_id
-   and c.b_type(+) = p.b_type
-   and c.digit(+) = p.history_digit
-) --select * from patron_output_tbl;
+--select * from lt_contadores_tbl where r_cnt > (select avg_cnt from lt_contadores_avg_tbl) order by r_cnt desc;
 --![[capa de transformaciones]]
 , output_tbl as (
 select ia1, ia2, ia3, ia4, ia5, ia6
      --!frecuencia
-     , decode(fr1,-1,'#',1,'R',2,'G',3,'B') fr1, decode(fr2,-1,'#',1,'R',2,'G',3,'B') fr2, decode(fr3,-1,'#',1,'R',2,'G',3,'B') fr3, decode(fr4,-1,'#',1,'R',2,'G',3,'B') fr4, decode(fr5,-1,'#',1,'R',2,'G',3,'B') fr5, decode(fr6,-1,'#',1,'R',2,'G',3,'B') fr6
+--     , decode(fr1,-1,'#',1,'R',2,'G',3,'B') fr1, decode(fr2,-1,'#',1,'R',2,'G',3,'B') fr2, decode(fr3,-1,'#',1,'R',2,'G',3,'B') fr3, decode(fr4,-1,'#',1,'R',2,'G',3,'B') fr4, decode(fr5,-1,'#',1,'R',2,'G',3,'B') fr5, decode(fr6,-1,'#',1,'R',2,'G',3,'B') fr6
      --!ley del tercio
      , decode(lt1,-1,'#',1,'R',2,'G',3,'B') lt1, decode(lt2,-1,'#',1,'R',2,'G',3,'B') lt2, decode(lt3,-1,'#',1,'R',2,'G',3,'B') lt3, decode(lt4,-1,'#',1,'R',2,'G',3,'B') lt4, decode(lt5,-1,'#',1,'R',2,'G',3,'B') lt5, decode(lt6,-1,'#',1,'R',2,'G',3,'B') lt6
      --!ciclo de aparicion
      , avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6
      --!decenas
      , d1, d2, d3, d4, d5, d6
-     , caso_id
-     --!numeros favorables
-     , pf1, pf2, pf3, pf4, pf5, pf6, pf1 + pf2 + pf3 + pf4 + pf5 + pf6 pf_sum
-     --!contador de primos, impares, pares
-     , pn_cnt, none_cnt, par_cnt
-     , t1_cnt, t2_cnt, 0 decena
-     , sorteo_actual, patron_6_accum, repetidos_cnt, patron_25_cnt, patron_25_accum
      --!numeros sin cambios
      , chg1, chg2, chg3, chg4, chg5, chg6
-     , aciertos_accum, digito_cnt, ia6_cnt, 'N' jugar_flag, ca_sum, comb_sum
      , case when chg1 = '.' then 0 else 1 end + case when chg2 = '.' then 0 else 1 end + case when chg3 = '.' then 0 else 1 end + case when chg4 = '.' then 0 else 1 end + case when chg5 = '.' then 0 else 1 end + case when chg6 = '.' then 0 else 1 end sum_chg
-     , list_id, 0 terminacion_str, 0 t_cnt
+     --!primos
+     , pn1, pn2, pn3, pn4, pn5, pn6, pn_cnt
+     --!impares
+     , none1, none2, none3, none4, none5, none6, none_cnt
+     --!pares
+     , par1, par2, par3, par4, par5, par6, par_cnt
+     --!multiplo de 3
+     , m3_1, m3_2, m3_3, m3_4, m3_5, m3_6, m3_cnt
+     --!multiplo de 4
+     , m4_1, m4_2, m4_3, m4_4, m4_5, m4_6, m4_cnt
+     --!multiplo de 5
+     , m5_1, m5_2, m5_3, m5_4, m5_5, m5_6, m5_cnt
+     --!multiplo de 7
+     , m7_1, m7_2, m7_3, m7_4, m7_5, m7_6, m7_cnt	
+     --!numeros favorables
+     , pf1, pf2, pf3, pf4, pf5, pf6, pf1 + pf2 + pf3 + pf4 + pf5 + pf6 pf_sum
+     , sorteo_actual
+     , caso_id
+     , repetidos_cnt
+     , t1_cnt, t2_cnt
+     , patron_6_accum,  patron_25_cnt, patron_25_accum
+     , aciertos_accum, digito_cnt, 0 ia6_cnt, ca_sum, comb_sum
+     , 'N' jugar_flag
+     , patron_25_history
+     , digito_25_history 
+     , red_cnt
+     , green_cnt
+     , blue_cnt
+     , nvl((select g_flag1 from olap_sys.gl_position_counts_v where pos1=ia1),'#') g1_flag
+     , nvl((select g_flag2 from olap_sys.gl_position_counts_v where pos2=ia2),'#') g2_flag
+     , nvl((select g_flag3 from olap_sys.gl_position_counts_v where pos3=ia3),'#') g3_flag
+     , nvl((select g_flag4 from olap_sys.gl_position_counts_v where pos4=ia4),'#') g4_flag
+     , nvl((select g_flag5 from olap_sys.gl_position_counts_v where pos5=ia5),'#') g5_flag
+     , nvl((select g_flag6 from olap_sys.gl_position_counts_v where pos6=ia6),'#') g6_flag
+ /*    , nvl((select type_flag1 from olap_sys.gl_position_counts_v where pos1=ia1),'#') t1_flag
+     , nvl((select type_flag2 from olap_sys.gl_position_counts_v where pos2=ia2),'#') t2_flag
+     , nvl((select type_flag3 from olap_sys.gl_position_counts_v where pos3=ia3),'#') t3_flag
+     , nvl((select type_flag4 from olap_sys.gl_position_counts_v where pos4=ia4),'#') t4_flag
+     , nvl((select type_flag5 from olap_sys.gl_position_counts_v where pos5=ia5),'#') t5_flag
+     , nvl((select type_flag6 from olap_sys.gl_position_counts_v where pos6=ia6),'#') t6_flag */
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 3 then 1 when seq between 4 and 6 then 2 when seq > 6 then 3 end from olap_sys.gl_position_counts_v where pos1=ia1),0) seq1_rank 
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 6 then 1 when seq between 7 and 12 then 2 when seq > 12 then 3 end from olap_sys.gl_position_counts_v where pos2=ia2),0) seq2_rank 
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 6 then 1 when seq between 7 and 12 then 2 when seq > 12 then 3 end from olap_sys.gl_position_counts_v where pos3=ia3),0) seq3_rank 
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 6 then 1 when seq between 7 and 12 then 2 when seq > 12 then 3 end from olap_sys.gl_position_counts_v where pos4=ia4),0) seq4_rank 
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 6 then 1 when seq between 7 and 12 then 2 when seq > 12 then 3 end from olap_sys.gl_position_counts_v where pos5=ia5),0) seq5_rank 
+     , nvl((select case when seq = 0 then 0 when seq between 1 and 3 then 1 when seq between 4 and 6 then 2 when seq > 6 then 3 end from olap_sys.gl_position_counts_v where pos6=ia6),0) seq6_rank 
+     , top_digit_cnt top_cnt
+     , nvl(top_digit_history,'NA') top_history
   from olap_sys.gl_automaticas_detail
  where 1=1
-   --![[caso_id]]
-   --![[caso_id in (1,2,3,4,5): c1=primo, caso_id in (6,7,8,9): c1=par]]
-   --and caso_id > 6
+   --!contadores de LT
+--   and (red_cnt,green_cnt,blue_cnt) in (select red_cnt, green_cnt, blue_cnt from lt_contadores_tbl where r_cnt > (select avg_cnt from lt_contadores_avg_tbl))
+   --!numero favorable no marcado
+--   and pf1 = 1
+--   and pf4 = 0
+   --!ley del tercio en G y B
+--#   and lt2 in (2,3)
    --![[rango de aciertos mas amplio]]
-   and aciertos_accum between 6 and 12
+--#   and aciertos_accum in (select aciertos_accum from distinct_aciertos_tbl)
+   --!condicion temporal mientras se incrementa el aciertos_accum. una vez que sea lo suficientemente grande el conjunto se comentara esta condicion y se descomentara la condicion de arriba
+   and aciertos_accum between 21 and 36  
+   and patron_25_cnt > 0
    --![[terminaciones]]
-   and (t1_cnt, t2_cnt) in ((4,2),(6,0))
-   --![[patron de primos-pares-impares]]
-   --![[1:primo, 2:par, 3:impar]]
---   and olap_sys.w_common_pkg.get_digit_type(ia1) = 1
---   and olap_sys.w_common_pkg.get_digit_type(ia4) = 2
---   and olap_sys.w_common_pkg.get_digit_type(ia5) = 2
---   and olap_sys.w_common_pkg.get_digit_type(ia6) = 3
-   --![[patrones de numeros mas frecuentes]]
---   and digito_cnt > 2
-   --![[numeros sin cambio en la posicion]]
-   and chg1 = '.'
-  -- and chg4 = '.'
-   and chg6 = '.'
-   --![[3 a 6 numeros pares]]
---   and par_cnt > 2
-   --![[numeros repetidos en base al sorteo anterior]]
-   and repetidos_cnt < 3   
-   --![[numeros favorables]]
---   and ((pf1=1 and pf2=1) or (pf5=1 and pf6=1))    
-   --![[informacion de gigaloterias]]
-   and IA1 in (select digit from e1_b1_tbl)
-   and IA2 in (select digit from e1_b2_tbl)
-   and IA3 in (select digit from e1_b3_tbl)
-   and IA4 in (select digit from e1_b4_tbl)
-   and IA5 in (select digit from e1_b5_tbl)
-   and IA6 in (select digit from e1_b6_tbl)
-   --![[patron de conteo basado en decenas, digitos y sorteos]]
-/*   and IA1 in (select pos from b1_tbl)
---   and IA2 in (select pos from b2_tbl)
-   and IA3 in (select pos from b3_tbl)
-   and IA4 in (select pos from b4_tbl)
-   and IA5 in (select pos from b5_tbl)
-   and IA6 in (select pos from b6_tbl)  */
+--#   and (t1_cnt, t2_cnt) in ((4,2),(6,0))
+   --![[gl_position_counts & next_digit_v & informacion de gigaloterias]]
+   and IA1 in (select pos from b1_merge_tbl)
+--#   and IA2 in (select pos from b2_merge_tbl)
+--#   and IA3 in (select pos from b3_merge_tbl)
+--#   and IA4 in (select pos from b4_merge_tbl)
+--#   and IA5 in (select pos from b5_merge_tbl)
+--#   and IA6 in (select pos from b6_merge_tbl)
+   and (IA2 in (select pos from b2_merge_tbl) or IA5 in (select pos from b5_merge_tbl))
    --<<lista de predicciones por decena>>
-   and (D1,D2,D3,D4,D5,D6) in (select pred1, pred2, pred3, pred4, pred5, pred6 from olap_sys.predicciones_all where prediccion_tipo = '10.DECENA' and prediccion_sorteo = (select max_id from resultado_tbl))     
-   --![[CA esta por debajo o por arriba del promedio]]
-   --and ((avg_ca_flag1, avg_ca_flag2) in (('B','B')) or (avg_ca_flag5, avg_ca_flag6) in (('B','B')))
---   and avg_ca_flag1 = 'B'
---   and avg_ca_flag6 = 'B'
-   --![[patron de posicion 2 al 5]]
-   and patron_25_cnt in (3,4)
---   and IA1 = 3
-)
-select distinct ia1, ia2, ia3, ia4, ia5, ia6, 
-                 fr1, fr2, fr3, fr4, fr5, fr6, 
-                 lt1, lt2, lt3, lt4, lt5, lt6, 
-                 avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6, 
-                 d1, d2, d3, d4, d5, d6, caso_id,
-                 pf1, pf2, pf3, pf4, pf5, pf6, 
-                 pn_cnt, none_cnt, par_cnt, t1_cnt, t2_cnt, 
-                 decena, sorteo_actual, patron_6_accum, repetidos_cnt, 
-                 patron_25_cnt, patron_25_accum, 
-                 chg1, chg2, chg3, chg4, chg5, chg6, 
-                 aciertos_accum, digito_cnt, ia6_cnt, jugar_flag, ca_sum, comb_sum, t_cnt
+   and (D1,D2,D3,D4,D5,D6) in (select pred1, pred2, pred3, pred4, pred5, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo,'DECENA') > 0 and prediccion_sorteo = (select max_id from resultado_tbl))        
+--   and (D1,D3,D4,D6) in (select distinct pred1, pred3, pred4, pred6 from olap_sys.predicciones_all where instr(prediccion_tipo, 'DECENA') > 0  and prediccion_sorteo = (select max_id from resultado_tbl))     
+--#   and patron_25_cnt > 1
+--#   and patron_25_accum > 5  
+) /*select ia1, ia2, ia3, ia4, ia5, ia6
+     , lt1, lt2, lt3, lt4, lt5, lt6
+     , red_cnt, green_cnt, blue_cnt
+     , d1, d2, d3, d4, d5, d6
+     , pn1, pn2, pn3, pn4, pn5, pn6, pn_cnt
+     , none1, none2, none3, none4, none5, none6, none_cnt
+     , par1, par2, par3, par4, par5, par6, par_cnt
+     , m3_1, m3_2, m3_3, m3_4, m3_5, m3_6, m3_cnt
+     , m4_1, m4_2, m4_3, m4_4, m4_5, m4_6, m4_cnt
+     , m5_1, m5_2, m5_3, m5_4, m5_5, m5_6, m5_cnt
+     , m7_1, m7_2, m7_3, m7_4, m7_5, m7_6, m7_cnt
+     , pf1, pf2, pf3, pf4, pf5, pf6, pf_sum
+     , chg1, chg2, chg3, chg4, chg5, chg6, sum_chg
+     , avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6
+     , g1_flag, g2_flag, g3_flag, g4_flag, g5_flag, g6_flag
+     , seq1_rank, seq2_rank, seq3_rank, seq4_rank, seq5_rank, seq6_rank
+     , sorteo_actual, caso_id, repetidos_cnt, t1_cnt, t2_cnt, patron_6_accum, patron_25_cnt, patron_25_accum, aciertos_accum, ca_sum, comb_sum, jugar_flag, patron_25_history 
+     , top_cnt, top_history
+     from output_tbl 
+     where 1=1 
+     --!filtrar jugadas cuyos digitos no han tenido cambios en su posicion
+     --and sum_chg in (0,1,2)
+     order by ia1, ia2, ia3, ia4, ia5, ia6;*/
+select ia1, ia2, ia3, ia4, ia5, ia6
+     , lt1, lt2, lt3, lt4, lt5, lt6
+     , red_cnt, green_cnt, blue_cnt
+     , d1, d2, d3, d4, d5, d6
+     , pn1, pn2, pn3, pn4, pn5, pn6, pn_cnt
+     , none1, none2, none3, none4, none5, none6, none_cnt
+     , par1, par2, par3, par4, par5, par6, par_cnt
+     , m3_1, m3_2, m3_3, m3_4, m3_5, m3_6, m3_cnt
+     , m4_1, m4_2, m4_3, m4_4, m4_5, m4_6, m4_cnt
+     , m5_1, m5_2, m5_3, m5_4, m5_5, m5_6, m5_cnt
+     , m7_1, m7_2, m7_3, m7_4, m7_5, m7_6, m7_cnt
+     , pf1, pf2, pf3, pf4, pf5, pf6, pf_sum
+     , chg1, chg2, chg3, chg4, chg5, chg6, sum_chg
+     , avg_ca_flag1, avg_ca_flag2, avg_ca_flag3, avg_ca_flag4, avg_ca_flag5, avg_ca_flag6
+     , g1_flag, g2_flag, g3_flag, g4_flag, g5_flag, g6_flag
+     , seq1_rank, seq2_rank, seq3_rank, seq4_rank, seq5_rank, seq6_rank
+     , sorteo_actual, caso_id, repetidos_cnt, t1_cnt, t2_cnt, patron_6_accum, patron_25_cnt, patron_25_accum, aciertos_accum, ca_sum, comb_sum, jugar_flag, patron_25_history 
+     , top_cnt, top_history
   from output_tbl
- where 1=1
+ where 1=1 
    --!filtrar jugadas cuyos digitos no han tenido cambios en su posicion
-   and sum_chg in (0,1,2,3)
-   --!solo jugadas con 1 o 2 numeros repetidos
-   --and repetidos_cnt in (1,2) 
-   --![[numeros favorables]]
---   and pf_sum in (2,3,4)     
-   --!lt summary
---   and lt1 in (select lt from lt_summary_tbl where b_type_end = 'B1')   
---   and lt3 in (select lt from lt_summary_tbl where b_type_end = 'B3')
---   and lt6 in (select lt from lt_summary_tbl where b_type_end = 'B6')   
+   and sum_chg in (0,1,2)
+   --!numeros favorables
+   and (pf_sum = 0
+     or (pf_sum = 2 and pf1=1 and (pf2=1 or pf6=1))
+     or ((pf_sum = 3 and (pf1=1 and pf2=1 and (pf3=1 or pf6=1))) or (pf_sum = 3 and (pf1=1 and pf3=1 and (pf2=1 or pf5=1))) or (pf_sum = 3 and (pf1=1 and pf5=1 and (pf2=1 or pf3=1))))
+     or (pf_sum = 4 and pf1=1 and pf2=1 and pf4=0)
+     or ((pf_sum = 5 and pf2=1 and pf5=1 and pf6=1 and (pf3=1 or pf4=1)))
+     or pf_sum = 6
+       ) 
+   and (pn_cnt,none_cnt,par_cnt,m3_cnt) in ((2,1,3,1),
+											(2,1,3,1),
+											(2,1,3,2),
+											(2,1,3,3),
+											(2,2,2,2),
+											(2,2,2,3),
+											--
+											(2,1,3,1),
+											(2,1,3,2),
+											(2,2,2,2),
+											(2,2,2,3),
+											--
+											(2,1,3,1),
+											(2,1,3,2),
+											(2,2,2,2),
+											(2,2,2,3))                                                        
    --!solo jugadas que esten el patron de ley del tercio
    --!esta condicion es sustituida por lt_summary de arriba
---   and (lt1, lt2, lt3, lt4, lt5, lt6) in (select lt1, lt2, lt3, lt4, lt5, lt6 from lt_details_tbl)   
- order by ia1, ia2, ia3, ia4, ia5, ia6 --repetidos_cnt desc, digito_cnt desc, ia6_cnt desc, 
- ;    
+   --and (lt1, lt2, lt3, lt4, lt5, lt6) in (select lt1, lt2, lt3, lt4, lt5, lt6 from lt_details_tbl) 
+   --!COMPARATIVO LT
+ /*  and lt1 in ('R','G','B')
+   and lt2 in ('G','B')
+   and lt3 in ('G','B')
+--   and lt4 in ('G','B')
+   and lt5 in ('R','G','B')
+--   and lt6 in ('R','G','B')*/
+   and ia3 in (20,16,12,13,14,17,15,18,24,21,23)
+   and ia4 in (24,22,21,28,29,19,30,25,27,33,23,26)
+   and ia5 in (27,32,31,29,28,34,36,25,30,24,26)
+    order by ia1, ia2, ia3, ia4, ia5, ia6
+;
 
 
 
