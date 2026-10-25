@@ -19,18 +19,52 @@ select drawing_id id
 		    when pronos_ciclo is null and preferencia_flag is not null then 1
 		    when pronos_ciclo is not null and preferencia_flag is null then 2
 		    when pronos_ciclo is not null and preferencia_flag is not null then 3 end pxc_pref	
-     , case when preferencia_flag is null then 0 else 1 end pref			
+     , case when preferencia_flag is null then 0 else 1 end pref
+     , case when b_avg_ciclo_aparicion = 1 and a_avg_ciclo_aparicion = 0 then 'B' else 
+       case when b_avg_ciclo_aparicion = 0 and a_avg_ciclo_aparicion = 1 then 'A' else '#' end end avg_ca_flag
   from olap_sys.s_calculo_stats
  where drawing_id = pn_drawing_id
  order by b_type, digit;
-
 
 cursor c_automaticas_header is
 select list_id
   from olap_sys.gl_automaticas_header ah
  where stop_date is null; 
 
-				 
+--validacion de repetidos y aciertos
+--para repetidos pv_resultado pasar las 6 posiciones ordenadas separadas por comas
+--para aciertos pv_resultado pasar el valor de la posicion especifica
+--pv_jugada siempre debe de pasar las 6 posiciones ordenadas separadas por comas
+cursor c_valida_repetidos_aciertos (pv_resultado	varchar2
+								  , pv_jugada	    varchar2) is
+with jugadas_tbl as (
+select pv_jugada str
+  from dual
+) --select * from resultado_n_1_tbl;
+, resultado_tbl as (
+select pv_resultado str
+  from dual
+) --select * from resultado_tbl;    
+, intersect_tbl as (
+select regexp_substr((select str from jugadas_tbl),'[^,]+',1,level) digit
+				   from dual 
+				 connect by level <= length((select str from jugadas_tbl))-length(replace((select str from jugadas_tbl),',',''))+1
+intersect
+select regexp_substr((select str from resultado_tbl),'[^,]+',1,level) digit
+				   from dual 
+				 connect by level <= length((select str from resultado_tbl))-length(replace((select str from resultado_tbl),',',''))+1
+)
+select count(1) inter_cnt
+  from intersect_tbl;						 
+
+cursor c_jugadas (pn_drawing_id		 number
+                , pn_comb            number) is 
+select id
+	 , ia1||','||ia2||','||ia3||','||ia4||','||ia5||','||ia6 jugada
+  from olap_sys.gl_automaticas_detail
+ where sorteo_actual = pn_drawing_id
+   and (ia5 = pn_comb or ia6 = pn_comb) ; 
+	 
 --!handler para insertar jugadas en la tabla GL_AUTOMATICAS_DETAIL
 procedure ins_gl_automaticas_handler(pv_gambling_type		varchar2 default 'mrtr'
 								   , pn_id					number
@@ -49,7 +83,12 @@ procedure upd_gl_automaticas_handler(pn_drawing_id     number
 								   , pv_ca_comb_flag    varchar2 default 'N');
 
 --!contar los aciertos y numeros repetidos del ultimo sorteo de la lista de combinaciones en base al ID del sorteo
-procedure aciertos_repetidos_handler(pn_drawing_id		number);
+procedure aciertos_repetidos_handler(pn_drawing_id		number
+									 -- 0: execute all
+									 -- 1: execute contar_repetidos
+									 -- 2: execute contar_aciertos
+								   , pv_execution_type  number default 0
+								   , pv_execution_flag  varchar2 default 'SINGLE');
 
 --!evaluar las predicciones de frecuencia y ley del tercio
 procedure evaluate_prediccion_handler(pn_drawing_id               	number);
@@ -161,6 +200,19 @@ procedure conteo_patrones_handler(pv_patron_type		varchar2 default 'DIGIT_TYPE'
 --!calcular y actualizar el promedio de ciclo de aparicion en base a b_type
 --!para que se pueda utilizar como metrica para la seleccion de jjugadas
 procedure upd_avg_gl_ca(pn_drawing_id		number);
+
+--!en base al rango de historico identificar los patrones de las posicion 2-5
+--!adicionalmente posicion 6
+procedure get_patron_handler(pn_drawing_id		number default 0
+                           , pn_rango_historico number default 100);
+
+--!actualizar las estaditicas almacenadas en la tabla pm_decenas
+procedure upd_pm_decenas_handler(pn_drawing_id		number
+							   , pv_execution_type  varchar2 default 'S');
+
+--!se marcan las jugadas de la posicion 2 a las 5 que contengan los digitos mas frecuentes
+--!se marcan las jugadas de la posicion 6 que contengan los digitos mas frecuentes
+procedure upd_digito_25_handler(pn_rango_historico	number default 100);
 
 end w_gl_automaticas_pkg;
 /
